@@ -1,0 +1,36 @@
+{
+  "name": "radish-ai-engine",
+  "version": "2.0.0",
+  "description": "SIRUSIRU Radish AI Engine - Dify-free implementation",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:production": "wrangler deploy --env production",
+    "db:create": "wrangler d1 create radish-knowledge",
+    "db:migrate": "wrangler d1 execute radish-knowledge --file=../database/schema.sql",
+    "db:seed": "wrangler d1 execute radish-knowledge --file=../database/seed.sql",
+    "kv:create": "wrangler kv:namespace create CACHE",
+    "test": "vitest",
+    "type-check": "tsc --noEmit"
+  },
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "ai",
+    "chatbot",
+    "insurance"
+  ],
+  "author": "Radish Corporation",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "wrangler": "^3.95.0"
+  },
+  "dependencies": {
+    "openai": "^4.76.1"
+  }
+}

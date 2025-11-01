@@ -1,0 +1,45 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Secrets & Environment
+*.env
+.env.local
+.env.*.local
+*.key
+*.pem
+wrangler.toml.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
+
+# Temporary files
+*.tmp
+*.bak
+tmp/
+temp/
+
+# OS
+Thumbs.db
+
+# Project specific
+radish.yml
+workers_final_complete.js
+company-config.js
+quota-integration.js
+brand-dictionary.js
+dictionary-manager.html
+dictionary-sync.js

@@ -1,0 +1,1143 @@
+/* 基本設定 */
+body {
+    font-family: 'Roboto', sans-serif;
+    background-color: #121212;
+    color: #FFFFFF;
+    margin: 0;
+    padding: 0; /* 修正: 上下paddingを外し、ヘッダー/フッターは固定 */
+    height: 100%;
+    overflow: hidden; /* 全体でスクロールせず内部でスクロール */
+}
+
+html {
+    height: 100%;
+}
+
+/* ヘッダー */
+header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 60px;
+  background-color: #1F1F1F;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 999;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+  padding: 0 20px;
+  box-sizing: border-box; /* 追加：paddingを含む幅の計算 */
+}
+
+
+header .logo {
+  display: flex;
+  gap: 10px;
+  color: #E0E0E0;
+}
+header .logo .main-title {
+  font-size: 1.5em;
+  font-weight: bold;
+  color: #E0E0E0;
+}
+header .logo .sub-title {
+  font-size: 0.9em;
+  font-weight: 400;
+  color: #B0B0B0;
+}
+
+/* 初期状態 */
+#header-nav {
+    display: none;
+}
+/* openクラスが付与されたとき */
+  #header-nav.open {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;     /* 右揃えなら flex-end など */
+    width: 100%;
+    padding: 10px 20px;
+    box-sizing: border-box;    /* ★ これでパディング込みでwidthを計算 */
+    position: absolute;
+    top: 60px;
+    left: 0;
+    /* 右寄せするために left: auto; right: 0; にしてもOK */
+    /* left: auto; right: 0; width: 80%; などでも可 */
+    background-color: #1F1F1F;
+    z-index: 1000;
+  }
+  
+  #header-nav.open a {
+    display: block;
+    width: 100%;
+    text-align: right;
+  }
+header nav a {
+  text-decoration: none;
+  color: #E0E0E0;
+  font-weight: 500;
+  transition: color 0.3s;
+}
+header nav a:hover {
+  color: #FFD700;
+}
+
+/* メニューアイコン(ヘッダー右) */
+.menu-toggle {
+  /* 以下の absolute 配置で header 内に収める */
+  cursor: pointer;
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #CB6847;
+  font-size: 24px;
+  z-index: 10000;
+  padding: 8px;
+  border-radius: 4px;
+}
+
+
+/* サイドバー初期状態：表示（オーバーレイ） */
+.sidebar {
+  position: fixed;
+  top: 60px;
+  left: 0;               
+  width: 240px;
+  height: calc(100% - 60px);
+  background-color: #333;
+  padding: 10px 15px; /* 左右の隙間を設ける */
+  box-sizing: border-box;
+  transition: transform 0.3s ease; 
+  transform: translateX(0);
+  z-index: 999;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── トグルボタン ────────────────────── */
+#sidebar-toggle{
+  position:fixed; top:100px; left:10px;          /* “閉” のとき */
+  z-index:9999;
+  background:#444; color:#fff; border:none;
+  font-size:18px; padding:6px 10px; border-radius:4px;
+  cursor:pointer; transition:left .3s ease;
+}
+/* サイドバーを開いている間 240+10 = 250px 右へ */
+body.sidebar-open #sidebar-toggle{ left:250px; }
+
+/* 閉じた状態 */
+#sidebar.collapsed { transform: translateX(-240px); }
+
+.sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.sidebar-header h2 {
+  margin: 0;
+  font-size: 1.2em;
+  color: #fff;
+}
+
+#new-conversation-btn, #conversation-refresh {
+  background: #444;
+  color: #fff;
+  border: none;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.3s;
+}
+
+#new-conversation-btn:hover, #conversation-refresh:hover {
+  background: #555;
+}
+
+#conversation-list {
+  list-style: none;
+  margin: 10px 0;
+  padding: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+#conversation-list li {
+  padding: 8px;
+  border-bottom: 1px solid #444;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+#conversation-list li:hover {
+  background-color: #444;
+}
+
+/* 更新ボタンを上に配置 */
+#conversation-refresh {
+  order: -1; /* 上側に移動 */
+  margin-bottom: 10px;
+}
+
+
+/* メインチャット領域 */
+.chat-main {
+  position: absolute;
+  top: 60px;
+  left: 0;           /* サイドバーぶん動かさない */
+  right: 0;
+  bottom: 60px;
+  overflow: hidden;
+  /* 余白を付けず常に全幅表示したいならここを固定 */
+  margin-left: 0;
+}
+
+body.sidebar-open .chat-main { left: 240px; }
+
+/* チャットコンテナ */
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* チャット表示領域 */
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  background: #332E29;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+  border-radius: 8px 8px 0 0;
+}
+.message {
+  margin-bottom: 15px;
+  padding: 10px 15px;
+  border-radius: 20px;
+  max-width: 80%;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+.message.user {
+  background-color: #CB6847;
+  color: #FFFFFF;
+  align-self: flex-end;
+}
+.message.bot {
+  position: relative;
+  background-color: #333333;
+  color: #E0E0E0;
+  align-self: flex-start;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+/* 音声ボタン重ね配置例 */
+.text-to-audio-btn {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background-color: #555;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 6px;
+  cursor: pointer;
+  font-size: 0.9em;
+  opacity: 0.8;
+}
+.text-to-audio-btn:hover {
+  opacity: 1;
+}
+
+/* 入力エリア */
+.chat-input {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  background: #1F1F1F;
+  border-top: 1px solid #444;
+  border-radius: 0 0 8px 8px;
+}
+.chat-input textarea {
+  flex: 1;
+  background: #1f1f1f;
+  color: #eee;
+  border: 1px solid #444;
+  border-radius: 4px;
+  resize: none;
+  height: 40px;
+  padding: 8px;
+  box-sizing: border-box;
+}
+.chat-input button {
+  background: #CB6847;
+  border: none;
+  color: #fff;
+  padding: 10px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* 音声読み上げボタン(固定非表示) */
+#text-to-audio-button {
+  display: none;
+}
+
+/* モーダル等 共通 */
+.modal-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0,0,0,0.5);
+  z-index: 2000;
+}
+.modal-content {
+  position: relative;
+  background: #fff;
+  color: #333;
+  padding: 20px;
+  border-radius: 8px;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+  max-height: 80vh;
+  overflow-y: auto;
+  animation: popupFadeIn 0.3s ease-in-out;
+  text-align: left;
+}
+.modal-content h2 {
+  margin-bottom: 20px;
+  font-size: 1.2em;
+}
+.modal-content input[type="file"] {
+  display: block;
+  margin: 0 auto 20px auto;
+}
+.modal-buttons {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 20px;
+}
+.modal-buttons button {
+  background-color: #CB6847;
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* 右上の閉じるボタン */
+.modal-close-button {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  background: transparent;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #000;
+}
+.modal-close-button:hover {
+  color: #666;
+}
+#file-list {
+  list-style: none;
+  padding-left: 0;
+}
+#file-list li {
+  padding: 8px 0;
+  border-bottom: 1px solid #ddd;
+  cursor: pointer;
+}
+/* ポップアップ */
+.popup-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+}
+.popup-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+}
+.popup {
+  position: relative;
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  padding: 20px;
+  max-width: 500px;
+  width: 80%;
+  text-align: center;
+  z-index: 1001;
+  animation: popupFadeIn 0.3s ease-in-out;
+}
+#popup-text {
+  font-size: 16px;
+  color: #333333;
+  margin-bottom: 20px;
+}
+.close-popup {
+  background-color: #007BFF;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  padding: 10px 20px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+.close-popup:hover {
+  background-color: #0056b3;
+}
+
+/* ファイル詳細モーダルのベース */
+.file-detail-modal-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 2000;
+}
+.file-detail-modal-content {
+  position: relative;
+  background: #fff;
+  color: #333;
+  padding: 20px;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  animation: popupFadeIn 0.3s ease-in-out;
+}
+.detail-close-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: #000;
+  cursor: pointer;
+}
+.file-detail-text {
+  white-space: pre-wrap;
+  line-height: 1.4;
+}
+.file-detail-textarea {
+  width: 100%;
+  height: 400px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+/* 会話履歴モーダル */
+#history-modal.modal-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: rgba(0,0,0,0.5);
+  z-index: 2000;
+}
+#history-modal .modal-content {
+  background: #ffffff;
+  color: #333;
+  padding: 20px;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+}
+#history-list {
+  list-style: none;
+  padding-left: 0;
+}
+#history-list li {
+  margin-bottom: 8px;
+}
+
+/* ボタンが読み込み中のとき */
+#send-button.loading, #record-button.loading {
+  opacity: 0.7;
+  cursor: not-allowed;
+  position: relative;
+}
+#send-button.loading::after, #record-button.loading::after {
+  content: "";
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #007bff;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  animation: spin 0.8s linear infinite;
+  display: block;
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+#record-button.loading::after {
+  border-top-color: red;
+}
+
+/* タイピングインジケータ */
+.typing-indicator {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  padding: 10px 15px;
+  border-radius: 20px;
+  background-color: #333333;
+  color: #E0E0E0;
+  margin-bottom: 15px;
+  max-width: 80%;
+  word-wrap: break-word;
+  align-self: flex-start;
+}
+.bot-typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #fff;
+  animation: botTyping 1s infinite ease-in-out;
+  display: inline-block;
+}
+.bot-typing-dot:nth-child(1) { animation-delay: 0s; }
+.bot-typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.bot-typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* フッター固定 (会社名) */
+#site-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 60px; /* 高さを40px→60pxに変更 */
+  background: #1f1f1f;
+  color: #eee;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 8px 0;
+  box-sizing: border-box;
+  box-shadow: 0 -2px 4px rgba(0,0,0,0.5);
+  z-index: 999;
+}
+
+/* 免責事項のスタイル */
+.footer-disclaimer {
+  font-size: 11px;
+  color: #aaa;
+  margin-bottom: 4px;
+  line-height: 1.2;
+}
+
+/* ファイル選択ボタン */
+.file-select-btn {
+  display: inline-block;
+  padding: 8px 12px;
+  cursor: pointer;
+  background-color: #CB6847;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  text-align: center;
+  transition: background-color 0.3s ease;
+  font-size: inherit;
+  font-family: inherit;
+}
+
+.file-select-btn:hover {
+  background-color: #A9543A;
+}
+
+/* 選択されたファイル一覧表示エリア */
+.selected-files-area {
+  margin-bottom: 15px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: #f8f9fa;
+}
+
+.selected-files-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: #e9ecef;
+  border-bottom: 1px solid #ddd;
+  border-radius: 4px 4px 0 0;
+  font-size: 14px;
+  color: #333;
+  font-weight: 500;
+}
+
+.file-limit-info {
+  font-size: 12px;
+  color: #666;
+}
+
+.selected-files-list {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.no-files-message {
+  text-align: center;
+  color: #666;
+  padding: 20px;
+  font-size: 14px;
+}
+
+.selected-file-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-size: 13px;
+}
+
+.selected-file-name {
+  flex: 1;
+  color: #333;
+  word-break: break-all;
+}
+
+.selected-file-size {
+  margin-left: 8px;
+  color: #666;
+  font-size: 11px;
+}
+
+.remove-file-btn {
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 2px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 10px;
+  margin-left: 8px;
+}
+
+.remove-file-btn:hover {
+  background: #c82333;
+}
+
+#login-modal {
+  z-index: 99999 !important; /* 競合が疑われる場合、!important を付ける */
+}
+
+/* モーダルのメインコンテンツ */
+.login-modal-content {
+  color: black;
+  position: relative;
+  width: 90%;
+  max-width: 400px; /* モーダルの横幅 */
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  animation: loginModalFadeIn 0.3s ease; /* フェードイン演出用 */
+}
+
+/* タイトル */
+.modal-title {
+  margin-bottom: 20px;
+  font-size: 1.4rem;
+  text-align: center;
+}
+
+/* 閉じるボタン */
+.modal-close-button {
+  position: absolute;
+  top: 10px; 
+  right: 10px;
+  background: transparent;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #666;
+}
+.modal-close-button:hover {
+  color: #333;
+}
+
+/* 入力フォーム */
+.login-form-group {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 15px;
+}
+.login-form-group label {
+  margin-bottom: 5px;
+  font-weight: 500;
+  color: #333;
+}
+.login-form-group input {
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.3s;
+}
+.login-form-group input:focus {
+  border-color: #777;
+}
+
+/* ボタン行 */
+.modal-buttons {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+/* ログインボタン */
+.login-submit-btn {
+  background: #CB6847; /* 例: 青緑系 */
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+.login-submit-btn:hover {
+  background: #CB6847;
+}
+
+/* ================================
+   カスタムスクロールバー (グレー調)
+================================ */
+.chat-messages::-webkit-scrollbar,
+.chat-input textarea::-webkit-scrollbar {
+  width: 8px;
+  background-color: #222;
+}
+.chat-messages::-webkit-scrollbar-thumb,
+.chat-input textarea::-webkit-scrollbar-thumb {
+  background-color: #555;
+  border-radius: 4px;
+}
+.chat-messages::-webkit-scrollbar-thumb:hover,
+.chat-input textarea::-webkit-scrollbar-thumb:hover {
+  background-color: #666;
+}
+.chat-messages::-webkit-scrollbar-corner,
+.chat-input textarea::-webkit-scrollbar-corner {
+  background-color: #222;
+}
+
+/* スクロールバーのデザイン調整（Webkit系ブラウザ向け） */
+::-webkit-scrollbar {
+  width: 8px; /* スクロールバーの幅 */
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1; /* スクロールバーの背景色 */
+}
+
+::-webkit-scrollbar-thumb {
+  background: #bbb; /* スクロールバーの色 */
+  border-radius: 4px; /* 丸みをつける */
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #999; /* ホバー時の色 */
+}
+
+/* ファイル一覧の削除ボタン */
+.delete-file-btn {
+  background: transparent;
+  border: none;
+  color: red;
+  font-size: 1em;
+  margin-left: 10px;
+  cursor: pointer;
+}
+
+/* 録音中のスタイル */
+#record-button.recording {
+  background-color: #ff4136; /* 赤色 */
+  animation: pulse 1.5s infinite;
+}
+
+/* ▼ 会話タイトルのミニメニュー */
+.conv-context-menu{
+  position:absolute;
+  background:#2c2c2c;
+  border:1px solid #555;
+  border-radius:4px;
+  padding:4px 0;
+  min-width:140px;
+  z-index:3000;
+  box-shadow:0 2px 8px rgba(0,0,0,.4);
+}
+.conv-context-menu button{
+  all:unset;
+  display:block;
+  width:100%;
+  padding:6px 14px;
+  font-size:14px;
+  cursor:pointer;
+  background:none;   /* オレンジ */
+  color:#fff;           /* 白文字 */
+  text-align:left;
+  border-radius:4px;
+}
+/* ホバーでも色を変えない（上書き） */
+.conv-context-menu button:hover{background:none;}
+
+.conv-menu-btn{
+  all:unset;                /* 既定スタイルを一掃 */
+  background:transparent;   /* ← 念のため明示 */
+  cursor:pointer;
+  font-size:18px;
+  color:#888;
+  padding:0 4px;
+}
+.conv-menu-btn:hover{color:#fff}   /* 文字色だけ変える */
+
+
+/* 点滅アニメーション */
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* アニメーション */
+@keyframes popupFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes spin {
+  0% { transform: translateY(-50%) rotate(0deg); }
+  100% { transform: translateY(-50%) rotate(360deg); }
+}
+@keyframes botTyping {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1); }
+}
+
+/* アニメーション (フェードイン) */
+@keyframes loginModalFadeIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to   { opacity: 1; transform: scale(1);   }
+}
+
+/* 自動チャージ通知のアニメーション */
+@keyframes slideInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(100px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* 自動チャージ通知のスタイル */
+.auto-charge-notification {
+  animation: slideInFromRight 0.5s ease-out;
+}
+
+#header-notification {
+  animation: slideDown 0.3s ease-out;
+}
+
+/* 768px以下（モバイル） */
+@media (max-width: 768px) {
+  header nav {
+    display: none;
+  }
+
+  header .menu-toggle {
+    display: block;
+    cursor: pointer;
+  }
+
+  /* ▼ サイドバー  -------------------------------- */
+  #sidebar { width: 60%; transform: translateX(0); }          /* = 表示時 */
+
+  /*   collapsed になったら幅の 100 % 分だけ左へ退避させる */
+  #sidebar.collapsed {
+    transform: translateX(-100%);
+    transition: transform .3s ease;     /* ← 既にあれば不要 */
+  }
+
+  /* ▼ チャット領域をスライド  ---------------------- */
+  body.sidebar-open .chat-main   { transform: translateX(60%); }
+
+  /* ▼ トグルボタンの位置 --------------------------- */
+  body.sidebar-open #sidebar-toggle{ left:calc(60% + 10px); }
+
+  /* 更新ボタンの位置調整 */
+  #conversation-refresh {
+    margin-top: 40px; /* トグルボタンと被らないよう調整 */
+  }
+
+  /* メインチャット領域をフル幅に調整 */
+  .chat-main {
+    left: 0;
+    right: 0;
+    top: 60px;
+    bottom: 60px;
+    margin-left: 0;
+  }
+}
+
+
+
+/* 769px以上（PC） */
+@media (min-width: 769px) {
+  /* ヘッダー全体をflexで横並びに */
+  header {
+    display: flex;         /* すでにfixed等は付いていると思うので省略 */
+    align-items: center;   /* 高さ揃え */
+    justify-content: flex-start;
+    position: fixed;       /* すでにfixedなら重複OK */
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 60px;
+    /* もともとのヘッダー設定があればそのまま書き換えor上書き */
+  }
+
+  /* ナビを右寄せ表示：flex＆margin-left: auto; */
+  #header-nav {
+    display: flex !important;     /* mobileのdisplay: noneを上書き */
+    flex-direction: row;          /* 横並び */
+    align-items: center;
+    gap: 20px;                    /* リンク間の隙間 */
+    position: static;             /* position: absolute; を解除 */
+    width: auto;                  /* 100%ではなく必要最小限 */
+    margin-left: auto;            /* これで右寄せ */
+    background: none;             /* 背景が不要なら透過に */
+  }
+
+  /* メニューアイコンは非表示 */
+  .menu-toggle {
+    display: none;
+  }
+}
+
+
+/* ================================
+   質問候補ボタンのスタイル (グレー系統)
+================================ */
+.suggested-questions {
+  padding: 10px;
+  background: #2f2f2f;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.suggested-questions button {
+  background: #444;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+.suggested-questions button:hover {
+  background: #555;
+}
+
+/* ================================
+   添付ファイル表示エリア
+================================ */
+.attached-files-area {
+  margin: 10px 0;
+  padding: 12px;
+  background: #2a2a2a;
+  border-radius: 8px;
+  border: 1px solid #444;
+}
+
+.attached-files-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.attached-files-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #4CAF50;
+  font-weight: 500;
+}
+
+.attached-files-header i {
+  font-size: 16px;
+}
+
+.attached-files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.attached-file-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #3a3a3a;
+  border-radius: 6px;
+  border: 1px solid #555;
+  transition: background 0.2s;
+}
+
+.attached-file-item:hover {
+  background: #404040;
+}
+
+.attached-file-icon {
+  font-size: 20px;
+  color: #4CAF50;
+  width: 24px;
+  text-align: center;
+}
+
+.attached-file-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.attached-file-name {
+  font-size: 14px;
+  color: #fff;
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.attached-file-details {
+  font-size: 12px;
+  color: #aaa;
+}
+
+.attached-file-remove {
+  background: #ff4444;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-size: 12px;
+}
+
+.attached-file-remove:hover {
+  background: #ff6666;
+}
+
+.attached-file-status {
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+.attached-file-status.uploading {
+  background: #FFA726;
+  color: #000;
+}
+
+.attached-file-status.uploaded {
+  background: #4CAF50;
+  color: #fff;
+}
+
+.attached-file-status.error {
+  background: #f44336;
+  color: #fff;
+}

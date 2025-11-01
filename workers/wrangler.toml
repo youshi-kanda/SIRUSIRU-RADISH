@@ -1,0 +1,34 @@
+name = "radish-ai-engine"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+workers_dev = true
+
+# D1 Database Binding
+[[d1_databases]]
+binding = "DB"
+database_name = "radish-knowledge"
+database_id = "YOUR_DATABASE_ID" # wrangler d1 create 後に更新
+
+# KV Namespace Binding (Cache用)
+[[kv_namespaces]]
+binding = "CACHE"
+id = "YOUR_KV_ID" # wrangler kv:namespace create 後に更新
+
+# R2 Bucket Binding (Backup用)
+[[r2_buckets]]
+binding = "BACKUP"
+bucket_name = "radish-backup"
+
+# 環境変数
+[vars]
+OPENAI_API_KEY = "" # 本番環境ではシークレット化
+ENVIRONMENT = "development"
+
+# 本番環境用の設定
+[env.production]
+name = "radish-ai-engine-production"
+vars = { ENVIRONMENT = "production" }
+
+# ローカル開発用の設定
+[env.development]
+name = "radish-ai-engine-dev"

@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>SIRUSIRU</title>
+  <!-- フォント -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <!-- スタイルシート -->
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.1/css/all.min.css" integrity="sha512-5Hs3dF2AEPkpNAR7UiOHba+lRSJNeM2ECkwxUIxC1Q/FLycGTbNapWXB4tP889k5T5Ju8fs4b1P5z/iB4nMfSQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.1/js/all.min.js" integrity="sha512-1JkMy1LR9bTo3psH+H4SV5bO2dFylgOy+UJhMus1zF4VEFuZVu5lsi4I6iIndE4N9p01z1554ZDcvMSjMaqCBQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+
+  <!-- ヘッダー -->
+  <header>
+    <div class="logo">
+      <span class="main-title">SIRUSIRU</span>
+      <span class="sub-title" id="company-name">株式会社Radish</span>
+    </div>
+    <!-- メニューアイコンを右寄せ -->
+    <div class="menu-toggle" id="menu-toggle">
+      <i class="fa-solid fa-bars"></i>
+    </div>
+    <nav id="header-nav" class="nav-menu">
+      <a href="#" id="company-website-link" target="_blank">会社概要</a>
+      <a id="contact-mail-link" href="#" class="nav-link">お問い合わせ</a>
+      <a id="file-list-link" href="javascript:void(0)">ファイル一覧</a>
+      <a id="dictionary-manager-link" href="dictionary-manager.html" target="_blank" style="display:none;">辞書管理ツール</a>
+      <a id="login-link" href="javascript:void(0)">ログイン</a>
+      <a id="mypage-link" href="javascript:void(0)" style="display:none;">マイページ</a>
+    </nav>
+  </header>
+
+<!-- 左カラム(サイドバー) -->
+<aside id="sidebar" class="sidebar">
+
+  <div class="sidebar-header">
+    <h2>会話一覧</h2>
+    <button id="conversation-refresh" class="refresh-btn">更新</button>
+  </div>
+
+  <button id="new-conversation-btn" class="new-conversation-btn">新規会話</button>
+
+  <ul id="conversation-list" class="conversation-list"></ul>
+
+</aside>
+
+<!-- サイドバー開閉ボタン -->
+<button id="sidebar-toggle" class="sidebar-toggle">
+  <i class="fa-solid fa-window-restore"></i>
+</button>
+
+  <!-- メインコンテナ(チャット画面) -->
+  <main id="chat-main" class="chat-main">
+    <div class="chat-container">
+      <div id="chat-messages" class="chat-messages"></div>
+      <div id="suggested-questions" class="suggested-questions"></div>
+      
+      <!-- 添付ファイル表示エリア -->
+      <div id="attached-files-area" class="attached-files-area" style="display: none;">
+        <div class="attached-files-container">
+          <div class="attached-files-header">
+            <i class="fa-solid fa-paperclip"></i>
+            <span>添付ファイル</span>
+          </div>
+          <div id="attached-files-list" class="attached-files-list"></div>
+        </div>
+      </div>
+      
+      <div class="chat-input">
+        <button id="record-button"><i class="fa-solid fa-microphone"></i></button>
+        <textarea id="user-input" rows="1" placeholder="SIRUSIRUに聞く..."></textarea>
+        <button id="open-upload-modal-button"><i class="fa-solid fa-file-arrow-up"></i></button>
+        <button id="send-button"><i class="fa-solid fa-paper-plane"></i></button>
+      </div>
+    </div>
+  </main>
+
+  <!-- 音声読み上げボタン -->
+  <button id="text-to-audio-button" style="display:none;">
+    <i class="fa-solid fa-volume-high"></i>
+  </button>
+
+<div id="upload-modal" class="modal-container" style="display: none;">
+  <div class="modal-content">
+    <h2>ファイルアップロード</h2>
+
+    <!-- 非表示のファイルinput -->
+    <input type="file" id="file-input" accept=".txt,.md,.pdf,.docx,.jpg,.png,.jpeg,.webp,.gif,.mp4,.mov,.mkv,.avi" multiple style="display:none;" />
+
+    <!-- 選択されたファイル一覧表示エリア -->
+    <div id="selected-files-area" class="selected-files-area">
+      <div id="selected-files-header" class="selected-files-header">
+        <span>選択されたファイル (<span id="file-count">0</span>個)</span>
+        <span id="file-limit-info" class="file-limit-info"></span>
+      </div>
+      <div id="selected-files-list" class="selected-files-list">
+        <div id="no-files-message" class="no-files-message">ファイルが選択されていません</div>
+      </div>
+    </div>
+
+    <!-- ファイル情報表示エリア -->
+    <div id="file-info" class="file-info" style="margin: 10px 0; padding: 8px; font-size: 12px; white-space: pre-line; border-radius: 4px; min-height: 20px;"></div>
+
+    <div class="modal-buttons">
+      <label for="file-input" class="file-select-btn">ファイルを選択</label>
+      <button id="confirm-upload-button">アップロード</button>
+      <button id="close-upload-modal">キャンセル</button>
+    </div>
+  </div>
+</div>
+
+  <!-- ファイル一覧モーダル -->
+  <div id="file-list-modal" class="modal-container" style="display:none;">
+    <div class="modal-content">
+      <button id="close-file-list-modal" class="modal-close-button">&times;</button>
+      <h2>ファイル一覧</h2>
+      <ul id="file-list"></ul>
+    </div>
+  </div>
+
+<!-- ファイル詳細モーダル（閲覧・編集の両方を内包） -->
+<div id="file-detail-modal" class="file-detail-modal-container" style="display: none;">
+  <div class="file-detail-modal-content">
+    <button id="close-file-detail-modal" class="detail-close-button">&times;</button>
+    <h2>ファイル詳細</h2>
+
+    <!-- ボタンを上側に移動し、既存デザインに合わせる -->
+    <div class="modal-buttons" style="margin-bottom: 15px;">
+      <button id="toggle-edit-mode-button" class="modal-button">編集モード</button>
+      <button id="update-file-button" class="modal-button" style="display:none;">更新</button>
+    </div>
+
+    <!-- 閲覧用（初期表示） -->
+    <div id="file-detail-view" class="file-detail-text"></div>
+
+    <!-- 編集用（初期は非表示） -->
+    <textarea id="file-detail-edit" class="file-detail-textarea" style="display:none;"></textarea>
+</div>
+</div>
+
+<!-- ログインモーダル -->
+<div id="login-modal" class="modal-container" style="display: none;">
+  <div class="login-modal-content">
+    <!-- 閉じるボタン -->
+    <button id="close-login-modal" class="modal-close-button">&times;</button>
+
+    <h2 class="modal-title">ログイン</h2>
+
+    <!-- 入力フォーム -->
+    <div class="login-form-group">
+      <label for="login-email">メールアドレス</label>
+      <input type="email" id="login-email" placeholder="email@example.com" required>
+    </div>
+    <div class="login-form-group">
+      <label for="login-password">パスワード</label>
+      <input type="password" id="login-password" placeholder="********" required>
+    </div>
+
+    <!-- ボタン類 -->
+    <div class="modal-buttons">
+      <button id="login-submit-button" class="login-submit-btn">ログイン</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- マイページモーダル -->
+<div id="mypage-modal" class="modal-container" style="display:none;">
+  <div class="modal-content">
+    <button id="close-mypage-modal" class="modal-close-button">&times;</button>
+    <h2>マイページ</h2>
+
+    <!-- ユーザー情報を表示する箇所 -->
+    <div id="user-info-display">
+      <p>メールアドレス: <span id="user-email"></span></p>
+      <p>役職: <span id="user-roles"></span></p>
+      <p>企業名: <span id="user-tenant"></span></p>
+      <p>残会話数: <span id="user-token-balance"></span></p>
+      <!-- 必要な他の項目があれば追加 -->
+    </div>
+
+    <!-- ログアウトボタン -->
+    <button id="logout-button">ログアウト</button>
+  </div>
+</div>
+
+
+  <!-- ポップアップ（引用などを表示） -->
+  <div id="popup-container" class="popup-container" style="display: none;">
+    <div class="popup">
+      <p id="popup-text"></p>
+      <button id="close-popup" class="close-popup">閉じる</button>
+    </div>
+    <div id="popup-overlay" class="popup-overlay"></div>
+  </div>
+
+  <!-- 会話履歴モーダル -->
+  <div id="history-modal" class="modal-container" style="display: none;">
+    <div class="modal-content">
+      <button id="close-history-modal" class="modal-close-button">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+      <h2>会話履歴</h2>
+      <ul id="history-list"></ul>
+    </div>
+  </div>
+
+  <!-- marked.jsの設定 -->
+  <script>
+    marked.setOptions({
+      gfm: true,
+      breaks: true
+    });
+  </script>
+
+  <!-- フッター固定(会社名) -->
+  <footer id="site-footer">
+    <div class="footer-disclaimer">
+      AIによる回答や分析結果は、必ずしも100％正確とは限りません。
+    </div>
+    &copy; Noce Creative
+  </footer>
+
+  <!-- サイドバー開閉などの簡易スクリプト -->
+  <script>
+    /* 新規会話ボタン (サンプル) */
+    const newConvBtn = document.getElementById('new-conversation-btn');
+    newConvBtn?.addEventListener('click', () => {
+      // API呼び出し等で会話を作成
+      // alert("新しい会話を作成しました。");
+    });
+
+const fileInput = document.getElementById("file-input");
+const selectedFilesList = document.getElementById("selected-files-list");
+const fileCountElement = document.getElementById("file-count");
+const noFilesMessage = document.getElementById("no-files-message");
+const fileLimitInfo = document.getElementById("file-limit-info");
+
+// 選択されたファイルを管理する配列
+let selectedFiles = [];
+
+// クォータ情報から最大ファイル数を取得する関数
+async function getMaxFileCount() {
+  try {
+    // quota-integration.jsのquotaManagerからアップロード制限を取得
+    if (window.quotaManager) {
+      const limits = await window.quotaManager.getUploadLimits();
+      if (limits && typeof limits.maxSessionFiles === 'number') {
+        return limits.maxSessionFiles;
+      }
+    }
+  } catch (error) {
+    console.warn('クォータ制限情報の取得に失敗:', error);
+  }
+
+  // フォールバック: 値を取得できない場合はnull
+  return null;
+}
+
+// ファイルサイズをフォーマットする関数
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// ファイル一覧を更新する関数
+async function updateFilesList() {
+  const maxFiles = await getMaxFileCount();
+
+  // ファイル数とリミット情報を更新
+  fileCountElement.textContent = selectedFiles.length;
+  fileLimitInfo.textContent = maxFiles ? `最大 ${maxFiles} ファイル` : '制限情報取得中...';
+
+  // 合計サイズを計算してfile-infoエリアに表示
+  updateFileInfoDisplay();
+
+  // リストをクリア
+  selectedFilesList.innerHTML = '';
+
+  if (selectedFiles.length === 0) {
+    selectedFilesList.appendChild(noFilesMessage.cloneNode(true));
+    return;
+  }
+
+  // 各ファイルのアイテムを作成
+  selectedFiles.forEach((file, index) => {
+    const fileItem = document.createElement('div');
+    fileItem.className = 'selected-file-item';
+
+    const fileName = document.createElement('span');
+    fileName.className = 'selected-file-name';
+    fileName.textContent = file.name;
+
+    const fileSize = document.createElement('span');
+    fileSize.className = 'selected-file-size';
+    fileSize.textContent = formatFileSize(file.size);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'remove-file-btn';
+    removeBtn.innerHTML = '×';
+    removeBtn.addEventListener('click', () => removeFile(index));
+
+    fileItem.appendChild(fileName);
+    fileItem.appendChild(fileSize);
+    fileItem.appendChild(removeBtn);
+
+    selectedFilesList.appendChild(fileItem);
+  });
+}
+
+// ファイル情報表示エリアを更新する関数
+function updateFileInfoDisplay() {
+  const fileInfoElement = document.getElementById('file-info');
+
+  if (selectedFiles.length === 0) {
+    fileInfoElement.textContent = '';
+    fileInfoElement.style.display = 'none';
+    return;
+  }
+
+  // 合計サイズを計算
+  const totalSize = selectedFiles.reduce((sum, file) => sum + file.size, 0);
+  const totalSizeFormatted = formatFileSize(totalSize);
+
+  // 表示内容を更新
+  fileInfoElement.textContent = `合計サイズ: ${totalSizeFormatted}`;
+  fileInfoElement.style.display = 'block';
+  fileInfoElement.style.backgroundColor = '#d4edda';
+  fileInfoElement.style.color = '#155724';
+  fileInfoElement.style.border = '1px solid #c3e6cb';
+}
+
+// ファイルを削除する関数
+function removeFile(index) {
+  selectedFiles.splice(index, 1);
+  updateFilesList();
+
+  // FileListを再構築
+  const dt = new DataTransfer();
+  selectedFiles.forEach(file => dt.items.add(file));
+  fileInput.files = dt.files;
+}
+
+// ファイル選択時の処理
+fileInput.addEventListener("change", async (event) => {
+  const files = Array.from(event.target.files);
+  const maxFiles = await getMaxFileCount();
+
+  // ファイル数制限チェック
+  if (maxFiles && selectedFiles.length + files.length > maxFiles) {
+    alert(`最大 ${maxFiles} ファイルまで選択できます。現在 ${selectedFiles.length} ファイル選択済みです。`);
+
+    // 制限内で追加できる分だけ取得
+    const remainingSlots = maxFiles - selectedFiles.length;
+    if (remainingSlots > 0) {
+      selectedFiles.push(...files.slice(0, remainingSlots));
+    }
+  } else {
+    selectedFiles.push(...files);
+  }
+
+  await updateFilesList();
+});
+
+// アップロード処理での複数ファイル対応とクォータチェック
+async function handleMultipleFileUpload() {
+  if (selectedFiles.length === 0) {
+    alert("ファイルが選択されていません。");
+    return;
+  }
+
+  const uploadButton = document.getElementById('confirm-upload-button');
+  const originalText = uploadButton.textContent;
+
+  try {
+    // アップロードボタンを無効化
+    uploadButton.disabled = true;
+    uploadButton.textContent = 'アップロード中...';
+
+    // クォータチェック（quota-integration.jsの機能を使用）
+    if (window.quotaManager) {
+      // より簡単なチェック方法に変更
+      try {
+        const limits = await window.quotaManager.getUploadLimits();
+
+        // 基本的なファイル数チェック
+        if (limits.maxSessionFiles && selectedFiles.length > limits.maxSessionFiles) {
+          alert(`一度にアップロードできるファイル数は最大 ${limits.maxSessionFiles} です。現在 ${selectedFiles.length} ファイル選択されています。`);
+          return;
+        }
+
+        // 基本的なファイルサイズチェック
+        const totalSizeMB = selectedFiles.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024);
+        if (limits.maxSessionSize && totalSizeMB > limits.maxSessionSize) {
+          alert(`一度にアップロードできる合計サイズは ${limits.maxSessionSize}MB までです。現在の合計サイズ: ${totalSizeMB.toFixed(2)}MB`);
+          return;
+        }
+
+      } catch (quotaError) {
+        console.warn('クォータチェックエラー:', quotaError);
+        // クォータチェックに失敗してもアップロードは続行
+      }
+    }
+
+    // 複数ファイルのアップロード処理
+    console.log(`${selectedFiles.length}個のファイルをアップロード開始:`, selectedFiles);
+
+    let successCount = 0;
+    let errorCount = 0;
+    const errors = [];
+
+    // 各ファイルを順次アップロード
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
+
+      try {
+        uploadButton.textContent = `アップロード中... (${i + 1}/${selectedFiles.length})`;
+
+        // 既存のアップロード関数を使用
+        let result = null;
+        if (window.uploadFileAndRegisterToKnowledge) {
+          result = await window.uploadFileAndRegisterToKnowledge(file);
+        } else if (window.uploadFileToDify) {
+          result = await window.uploadFileToDify(file);
+        } else {
+          throw new Error('アップロード関数が見つかりません');
+        }
+
+        successCount++;
+        console.log(`ファイル ${file.name} のアップロードが完了:`, result);
+
+      } catch (fileError) {
+        errorCount++;
+        const errorMsg = `${file.name}: ${fileError.message}`;
+        errors.push(errorMsg);
+        console.error(`ファイル ${file.name} のアップロードエラー:`, fileError);
+      }
+    }
+
+    // 結果をユーザーに通知
+    if (successCount > 0 && errorCount === 0) {
+      alert(`${successCount} ファイルのアップロードが完了しました。`);
+    } else if (successCount > 0 && errorCount > 0) {
+      alert(`${successCount} ファイルのアップロードが完了しました。\n${errorCount} ファイルでエラーが発生しました:\n${errors.join('\n')}`);
+    } else {
+      alert(`アップロードに失敗しました:\n${errors.join('\n')}`);
+    }
+
+    // アップロード成功後、ファイル選択をリセット
+    selectedFiles = [];
+    fileInput.value = "";
+    await updateFilesList();
+
+    // アップロードモーダルを閉じる
+    if (successCount > 0) {
+      document.getElementById('upload-modal').style.display = 'none';
+    }
+
+  } catch (error) {
+    console.error('ファイルアップロードエラー:', error);
+    alert('ファイルアップロードに失敗しました: ' + error.message);
+  } finally {
+    // アップロードボタンを元に戻す
+    uploadButton.disabled = false;
+    uploadButton.textContent = originalText;
+  }
+}
+
+// アップロードボタンのイベントリスナーを更新
+document.addEventListener('DOMContentLoaded', () => {
+  const uploadButton = document.getElementById('confirm-upload-button');
+  if (uploadButton) {
+    uploadButton.addEventListener('click', handleMultipleFileUpload);
+  }
+});
+
+// モーダルを開くときの初期化処理
+document.getElementById("open-upload-modal-button").addEventListener("click", async () => {
+  selectedFiles = [];
+  fileInput.value = "";
+  await updateFilesList();
+});
+
+
+  </script>
+
+  <!-- 🌐 設定ファイル（最初に読み込み） -->
+  <script src="config.js"></script>
+
+  <!-- 🏢 設定ファイル連動（会社名・リンクの自動設定） -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // 会社名の自動設定
+      if (window.CONFIG?.COMPANY_NAME) {
+        const companyNameElement = document.getElementById('company-name');
+        if (companyNameElement) {
+          companyNameElement.textContent = window.CONFIG.COMPANY_NAME;
+        }
+      }
+
+      // 会社ウェブサイトリンクの自動設定
+      if (window.CONFIG?.EXTERNAL_SERVICES?.COMPANY_WEBSITE) {
+        const companyLinkElement = document.getElementById('company-website-link');
+        if (companyLinkElement) {
+          companyLinkElement.href = window.CONFIG.EXTERNAL_SERVICES.COMPANY_WEBSITE;
+        }
+      }
+
+    });
+  </script>
+
+  <script src="dictionary-sync.js"></script>
+  <script src="quota-integration.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
