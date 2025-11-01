@@ -32,12 +32,10 @@ jobs:
         working-directory: ./workers
         run: npm run type-check
 
-      - name: Deploy to Cloudflare Workers (Production)
-        if: github.ref == 'refs/heads/main'
-        working-directory: ./workers
-        run: npx wrangler deploy --env production
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+            - name: Deploy to Cloudflare Workers
+        run: |
+          cd workers
+          npx wrangler deploy
 
       - name: Deploy to Cloudflare Workers (Development)
         if: github.ref == 'refs/heads/develop'
@@ -45,6 +43,7 @@ jobs:
         run: npx wrangler deploy --env development
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
   # Pagesデプロイは後で有効化
   # deploy-pages:
