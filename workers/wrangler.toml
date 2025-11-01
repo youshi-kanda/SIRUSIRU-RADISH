@@ -7,12 +7,12 @@ workers_dev = true
 [[d1_databases]]
 binding = "DB"
 database_name = "radish-knowledge"
-database_id = "YOUR_DATABASE_ID" # wrangler d1 create 後に更新
+database_id = "db86fcde-c4fa-4a3f-abe2-52ab02790174"
 
 # KV Namespace Binding (Cache用)
 [[kv_namespaces]]
 binding = "CACHE"
-id = "YOUR_KV_ID" # wrangler kv:namespace create 後に更新
+id = "795ed7ef7b1548629322d2a8c95b62bc"
 
 # R2 Bucket Binding (Backup用)
 [[r2_buckets]]
