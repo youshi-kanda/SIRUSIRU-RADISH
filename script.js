@@ -3515,7 +3515,7 @@ document.body.classList.remove('sidebar-open');
 async function fetchConversationList() {
   try {
     // テストモードでは会話一覧APIをスキップ
-    if (getConfig('FEATURES.SKIP_AUTH_FOR_TESTING')) {
+    if (getConfig('APP_SETTINGS.FEATURES.SKIP_AUTH_FOR_TESTING')) {
       console.log('🔓 テストモード: 会話一覧APIコールをスキップ');
       displayConversationList([]);
       return;
@@ -4355,7 +4355,7 @@ async function fetchRemainingTokens() {
 async function fetchUserProfile() {
   try {
     // テストモードではAPIコールをスキップ
-    if (getConfig('FEATURES.SKIP_AUTH_FOR_TESTING')) {
+    if (getConfig('APP_SETTINGS.FEATURES.SKIP_AUTH_FOR_TESTING')) {
       console.log('🔓 テストモード: ユーザープロファイルAPIコールをスキップ');
       return {
         email: 'test-user@example.com',
@@ -4796,7 +4796,7 @@ function isTokenExpiringSoon(token, bufferMinutes = 2) {
   if (!token) return true;
 
   // テストモードではトークンチェックをスキップ
-  if (getConfig('FEATURES.SKIP_AUTH_FOR_TESTING')) {
+  if (getConfig('APP_SETTINGS.FEATURES.SKIP_AUTH_FOR_TESTING')) {
     return false; // 常に有効として扱う
   }
 
@@ -4812,7 +4812,7 @@ function isTokenExpiringSoon(token, bufferMinutes = 2) {
     return timeUntilExpiry <= bufferSeconds;
   } catch (error) {
     // テストモードの場合はエラーログを出さない
-    if (!getConfig('FEATURES.SKIP_AUTH_FOR_TESTING')) {
+    if (!getConfig('APP_SETTINGS.FEATURES.SKIP_AUTH_FOR_TESTING')) {
       console.error("トークン有効期限チェックエラー:", error);
     }
     return true;
@@ -5725,7 +5725,7 @@ function initPollingPermissionUpdates() {
 async function checkPermissionUpdates() {
   try {
     // テストモードではAPIコールをスキップ
-    if (getConfig('FEATURES.SKIP_AUTH_FOR_TESTING')) {
+    if (getConfig('APP_SETTINGS.FEATURES.SKIP_AUTH_FOR_TESTING')) {
       return;
     }
 
