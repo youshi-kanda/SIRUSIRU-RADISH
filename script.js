@@ -577,31 +577,36 @@ async function processInput(inputText, audioFile, uploadedFileId = null) {
     // メッセージ送信
     await sendMessage(userInput, filesParam);
     
-    // トークン消費（1会話送信につき1トークン減算）
-    try {
-      const newBalance = await consumeTokens(1);
-      if (newBalance !== null && newBalance !== undefined) {
-        updateBalanceDisplay(newBalance);
-      }
-    } catch (tokenError) {
-      // 401エラーの場合はトークンリフレッシュを試行
-      if (tokenError.message && tokenError.message.includes('401')) {
-        try {
-          const refreshed = await tryRefresh();
-          if (refreshed) {
-            // リフレッシュ成功後に再度トークン消費を試行
-            const newBalance = await consumeTokens(1);
-            if (newBalance !== null && newBalance !== undefined) {
-              updateBalanceDisplay(newBalance);
-            }
-          }
-        } catch (retryError) {
-          console.error("トークン消費リトライエラー:", retryError);
+    // テストモードではトークン消費をスキップ
+    if (getConfig('APP_SETTINGS.FEATURES.SKIP_AUTH_FOR_TESTING')) {
+      console.log('🔓 テストモード: トークン消費APIコールをスキップ');
+    } else {
+      // トークン消費（1会話送信につき1トークン減算）
+      try {
+        const newBalance = await consumeTokens(1);
+        if (newBalance !== null && newBalance !== undefined) {
+          updateBalanceDisplay(newBalance);
         }
-      } else {
-        console.error("トークン消費エラー:", tokenError);
+      } catch (tokenError) {
+        // 401エラーの場合はトークンリフレッシュを試行
+        if (tokenError.message && tokenError.message.includes('401')) {
+          try {
+            const refreshed = await tryRefresh();
+            if (refreshed) {
+              // リフレッシュ成功後に再度トークン消費を試行
+              const newBalance = await consumeTokens(1);
+              if (newBalance !== null && newBalance !== undefined) {
+                updateBalanceDisplay(newBalance);
+              }
+            }
+          } catch (retryError) {
+            console.error("トークン消費リトライエラー:", retryError);
+          }
+        } else {
+          console.error("トークン消費エラー:", tokenError);
+        }
+        // トークンエラーでもメッセージ送信は成功しているので、エラー表示は行わない
       }
-      // トークンエラーでもメッセージ送信は成功しているので、エラー表示は行わない
     }
 
   } catch (err) {
@@ -634,24 +639,8 @@ async function sendMessage(userInput, files = []) {
 
     const userEmail = localStorage.getItem("userEmail") || "anonymous";
 
-    // conversationIdがない場合は新規会話を作成
-    if (!conversationId || conversationId.trim() === "") {
-      console.log("会話IDがないため、新規会話を作成します");
-      try {
-        await createNewConversation();
-        console.log("新規会話作成完了:", conversationId);
-
-        // 新規会話作成後もIDが無い場合はエラー
-        if (!conversationId || conversationId.trim() === "") {
-          throw new Error("新規会話作成は成功しましたが、会話IDが設定されていません");
-        }
-      } catch (error) {
-        console.error("新規会話作成に失敗:", error);
-        throw new Error("新規会話の作成に失敗しました。もう一度お試しください。");
-      }
-    }
-
-    console.log("チャット送信に使用する会話ID:", conversationId);
+    // 新しいWorkers APIでは会話IDは自動生成される（作成不要）
+    console.log("チャット送信開始 - 会話ID:", conversationId || "新規会話");
 
     // 知識ベース設定状況をデバッグ
     try {
