@@ -312,3 +312,4 @@ UNLICENSED - 株式会社Radish専用
 ## 👥 お問い合わせ
 
 開発に関する質問は、GitHub Issuesまたは開発チームまでご連絡ください。
+# GitHub Actions test
