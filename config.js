@@ -146,8 +146,8 @@ window.CONFIG = {
     FILE_DETAIL: `${companyConfig.workers_url}/api/files/detail`,
     FILE_UPDATE: `${companyConfig.workers_url}/api/files/update`,
 
-    // チャット関連（Workers v7.2対応）
-    CHAT_MESSAGES: `${companyConfig.workers_url}/api/chat/messages`,
+    // チャット関連（Radish AI Engine v2.0）
+    CHAT_MESSAGES: `${companyConfig.workers_url}/api/chat`,
     CHAT_FILE_UPLOAD: `${companyConfig.workers_url}/api/chat-files/upload`,
 
     // ドキュメント関連
