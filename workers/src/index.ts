@@ -123,6 +123,23 @@ async function handleChatRequest(request: Request, env: Env): Promise<Response> 
     const body = await request.json<ChatRequest>();
     const { query, conversation_id, user_id } = body;
 
+    // 初回メッセージ（会話ID未設定 & クエリなし）の場合、AI側から質問
+    if (!conversation_id && (!query || query.trim().length === 0)) {
+      const newConvId = generateConversationId();
+      const welcomeMessage = 
+        'お電話ありがとうございます。保険加入のご相談ですね。\n' +
+        '何か気になる症状や、既往症がございますか？\n' +
+        '具体的な症状（例：胃が痛い）や病名（例：胃炎）をお聞かせください。';
+
+      return createSuccessResponse({
+        answer: welcomeMessage,
+        conversation_id: newConvId,
+        type: 'GREETING',
+        sources: [],
+        suggestions: [],
+      });
+    }
+
     if (!query || query.trim().length === 0) {
       return createErrorResponse('Query is required', 'BAD_REQUEST');
     }

@@ -624,6 +624,52 @@ async function processInput(inputText, audioFile, uploadedFileId = null) {
   }
 }
 
+// ================================
+// 2.5) 初回挨拶メッセージを表示
+// ================================
+async function displayInitialGreeting() {
+  try {
+    // 既にメッセージがある場合はスキップ
+    const chatHistory = document.getElementById("chat-history");
+    if (chatHistory && chatHistory.children.length > 0) {
+      return;
+    }
+
+    // API から初回メッセージを取得
+    const endpoint = getConfig('ENDPOINTS.CHAT_MESSAGES');
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query: '',
+        conversation_id: null,
+        user_id: 'test-user'
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.answer) {
+        addMessage(data.answer, 'bot');
+        if (data.conversation_id) {
+          conversationId = data.conversation_id;
+        }
+      }
+    }
+  } catch (error) {
+    console.error('初回メッセージ取得エラー:', error);
+    // エラーの場合はデフォルトメッセージを表示
+    addMessage(
+      'お電話ありがとうございます。保険加入のご相談ですね。\n' +
+      '何か気になる症状や、既往症がございますか？\n' +
+      '具体的な症状（例：胃が痛い）や病名（例：胃炎）をお聞かせください。',
+      'bot'
+    );
+  }
+}
+
 
 // ================================
 // 3) メッセージを送信
@@ -2730,6 +2776,9 @@ document.body.classList.remove('sidebar-open');
   
   // ネットワーク監視を開始 - 新規追加
   setupNetworkMonitoring();
+
+  // チャット初回メッセージ（AI側から質問）を表示
+  displayInitialGreeting();
 
   // チャット画面でのファイル添付ドラッグ&ドロップ機能を初期化
   setupChatDragAndDrop();
