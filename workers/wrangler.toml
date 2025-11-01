@@ -14,10 +14,10 @@ database_id = "db86fcde-c4fa-4a3f-abe2-52ab02790174"
 binding = "CACHE"
 id = "795ed7ef7b1548629322d2a8c95b62bc"
 
-# R2 Bucket Binding (Backup用)
-[[r2_buckets]]
-binding = "BACKUP"
-bucket_name = "radish-backup"
+# R2 Bucket Binding (Backup用) - 一旦コメントアウト
+# [[r2_buckets]]
+# binding = "BACKUP"
+# bucket_name = "radish-backup"
 
 # 環境変数
 [vars]
