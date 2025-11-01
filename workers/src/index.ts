@@ -20,42 +20,97 @@ import {
   validateResponse,
 } from './utils/openai';
 
+/**
+ * CORS対応のレスポンスヘッダーを作成
+ */
+function getCorsHeaders(origin?: string | null): HeadersInit {
+  return {
+    'Access-Control-Allow-Origin': origin || '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Client, X-Tenant-Domain',
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    // CORS headers
-    const corsHeaders = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    };
+    const origin = request.headers.get('Origin');
+    const corsHeaders = getCorsHeaders(origin);
 
     // Handle OPTIONS request (CORS preflight)
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders });
     }
 
-    const url = new URL(request.url);
+    try {
+      const url = new URL(request.url);
 
-    // Health check endpoint
-    if (url.pathname === '/api/health') {
-      return createSuccessResponse({
-        status: 'healthy',
-        timestamp: new Date().toISOString(),
-        version: '2.0.0',
-      });
+      // Health check endpoint
+      if (url.pathname === '/api/health') {
+        return new Response(
+          JSON.stringify({
+            status: 'healthy',
+            timestamp: new Date().toISOString(),
+            version: '2.0.0',
+          }),
+          {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              ...corsHeaders,
+            },
+          }
+        );
+      }
+
+      // Chat endpoint
+      if (url.pathname === '/api/chat' && request.method === 'POST') {
+        const response = await handleChatRequest(request, env);
+        // Add CORS headers to response
+        Object.entries(corsHeaders).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+        return response;
+      }
+
+      // Knowledge management endpoints (future implementation)
+      if (url.pathname.startsWith('/api/knowledge')) {
+        return new Response(
+          JSON.stringify({ error: 'Knowledge API not implemented yet', code: 'NOT_IMPLEMENTED' }),
+          {
+            status: 501,
+            headers: {
+              'Content-Type': 'application/json',
+              ...corsHeaders,
+            },
+          }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ error: 'Not Found', code: 'NOT_FOUND' }),
+        {
+          status: 404,
+          headers: {
+            'Content-Type': 'application/json',
+            ...corsHeaders,
+          },
+        }
+      );
+    } catch (error) {
+      console.error('Worker error:', error);
+      return new Response(
+        JSON.stringify({ error: 'Internal Server Error', code: 'INTERNAL_ERROR' }),
+        {
+          status: 500,
+          headers: {
+            'Content-Type': 'application/json',
+            ...corsHeaders,
+          },
+        }
+      );
     }
-
-    // Chat endpoint
-    if (url.pathname === '/api/chat' && request.method === 'POST') {
-      return handleChatRequest(request, env);
-    }
-
-    // Knowledge management endpoints (future implementation)
-    if (url.pathname.startsWith('/api/knowledge')) {
-      return createErrorResponse('Knowledge API not implemented yet', 'NOT_IMPLEMENTED');
-    }
-
-    return createErrorResponse('Not Found', 'NOT_FOUND');
   },
 };
 
