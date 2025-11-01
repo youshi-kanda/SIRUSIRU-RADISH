@@ -5123,6 +5123,17 @@ async function deleteFile(docId) {
 // ログイン状態のチェック (新規追加)
 // ================================
 function checkLoginStatus() {
+  // 開発・テスト用: 認証スキップモード
+  if (getConfig('APP_SETTINGS.FEATURES.SKIP_AUTH_FOR_TESTING')) {
+    console.log("🔓 認証スキップモード: テスト用にログインなしで動作します");
+    // ダミーのユーザー情報を設定
+    localStorage.setItem("accessToken", "test-dummy-token");
+    localStorage.setItem("userEmail", "test@example.com");
+    enableUserInteractions();
+    updateNavMenu();
+    return;
+  }
+  
   const token = localStorage.getItem("accessToken");
   
   if (!token) {

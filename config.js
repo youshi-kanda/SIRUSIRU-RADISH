@@ -223,7 +223,8 @@ window.CONFIG = {
       FILE_UPLOAD: true,
       AUDIO_FEATURES: true,
       WEBSOCKET_UPDATES: true,
-      DYNAMIC_CONFIG: false  // 動的設定は無効化
+      DYNAMIC_CONFIG: false,  // 動的設定は無効化
+      SKIP_AUTH_FOR_TESTING: true  // 開発・テスト用: 認証スキップモード
     },
 
     // UI設定
