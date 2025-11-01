@@ -3514,6 +3514,13 @@ document.body.classList.remove('sidebar-open');
 // ================================
 async function fetchConversationList() {
   try {
+    // テストモードでは会話一覧APIをスキップ
+    if (getConfig('FEATURES.SKIP_AUTH_FOR_TESTING')) {
+      console.log('🔓 テストモード: 会話一覧APIコールをスキップ');
+      displayConversationList([]);
+      return;
+    }
+
     // キャッシュチェック
     const cacheKey = 'conversation-list';
     const cachedData = apiCache.get(cacheKey);
@@ -3531,31 +3538,9 @@ async function fetchConversationList() {
       return;
     }
     
-    // 会話一覧を取得
-    const endpoint = getConfig('ENDPOINTS.CONVERSATION_LIST') ? getConfig('ENDPOINTS.CONVERSATION_LIST')(userEmail) : `${API_BASE}/api/conversation-list?user=${encodeURIComponent(userEmail)}`;
-
-    const resp = await apiFetch(endpoint, {
-      method: "GET",
-      headers: {
-        'X-API-Client': 'sirusiru-chat',
-        'X-Tenant-Domain': getConfig('TENANT_DOMAIN')
-      },
-      timeout: 10000  // 10秒タイムアウト
-    });
+    // TODO: 将来的にWorkersに会話一覧エンドポイントを実装
+    displayConversationList([]);
     
-    if (!resp.ok) {
-      const errText = await resp.text();
-      console.warn("Conversation List API unavailable:", resp.status, errText.substring(0, 100));
-      throw new Error(`Conversation list API failed: ${resp.status}`);
-    }
-    
-    const data = await resp.json();
-    
-    // キャッシュに保存（1分間）
-    apiCache.set(cacheKey, data, 60 * 1000);
-    
-    // 会話一覧を表示
-    displayConversationList(data.data || []);
   } catch (err) {
     // 認証エラーの場合は静かに処理（ログイン促進のため）
     if (err.message && err.message.includes("No access token")) {
@@ -4369,6 +4354,16 @@ async function fetchRemainingTokens() {
 // ユーザープロファイル情報を取得（Django API優先）
 async function fetchUserProfile() {
   try {
+    // テストモードではAPIコールをスキップ
+    if (getConfig('FEATURES.SKIP_AUTH_FOR_TESTING')) {
+      console.log('🔓 テストモード: ユーザープロファイルAPIコールをスキップ');
+      return {
+        email: 'test-user@example.com',
+        name: 'Test User',
+        company: 'Test Company'
+      };
+    }
+
     const cacheKey = 'user-profile';
     const cachedData = apiCache.get(cacheKey);
 
@@ -4376,32 +4371,11 @@ async function fetchUserProfile() {
       return cachedData;
     }
 
-    // まずDjango APIから取得を試行
-    try {
-      const response = await apiFetch(getConfig('ENDPOINTS.USER_PROFILE'), {
-        method: 'GET'
-      });
-
-      if (response.ok) {
-        const profileData = await response.json();
-
-        // 10分間キャッシュ
-        apiCache.set(cacheKey, profileData, 10 * 60 * 1000);
-        return profileData;
-      } else {
-        console.warn(`Django API ユーザープロファイル取得エラー: ${response.status} - フォールバックに切り替えます`);
-      }
-    } catch (apiError) {
-      console.warn(`Django API ユーザープロファイル取得エラー: ${apiError.message} - フォールバックに切り替えます`);
-    }
-
-    // Django APIが失敗した場合のフォールバック: ローカルストレージから取得
+    // ローカルストレージから取得
     const userInfo = localStorage.getItem(getConfig('APP_SETTINGS.USER_INFO_KEY'));
     if (userInfo) {
       try {
         const data = JSON.parse(userInfo);
-
-        // 5分間キャッシュ（短めに設定）
         apiCache.set(cacheKey, data, 5 * 60 * 1000);
         return data;
       } catch (e) {
@@ -4409,7 +4383,6 @@ async function fetchUserProfile() {
       }
     }
 
-    // 全て失敗した場合はnullを返す
     return null;
   } catch (error) {
     console.error("ユーザープロファイル取得エラー:", error);

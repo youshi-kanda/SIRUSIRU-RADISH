@@ -220,9 +220,9 @@ window.CONFIG = {
     // フィーチャーフラグ
     FEATURES: {
       SUGGESTED_QUESTIONS: false,
-      FILE_UPLOAD: true,
-      AUDIO_FEATURES: true,
-      WEBSOCKET_UPDATES: true,
+      FILE_UPLOAD: false,  // ファイルアップロードも無効化
+      AUDIO_FEATURES: false,  // 音声機能も無効化
+      WEBSOCKET_UPDATES: false,  // WebSocketも無効化
       DYNAMIC_CONFIG: false,  // 動的設定は無効化
       SKIP_AUTH_FOR_TESTING: true  // 開発・テスト用: 認証スキップモード
     },
