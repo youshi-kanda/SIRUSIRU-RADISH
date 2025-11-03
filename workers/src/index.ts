@@ -753,10 +753,11 @@ async function handleSymptomInputState(
     const results = await searchKnowledgeByVector(
       env,
       candidate.disease_name,
-      3 // 上位3件
+      undefined, // company_id
+      5 // 上位5件
     );
     
-    allResults = allResults.concat(results);
+    console.log(`${candidate.disease_name}の検索結果:`, results.length);
     
     responseText += `**${candidate.disease_name}の保険適応:**\n\n`;
     
@@ -764,19 +765,47 @@ async function handleSymptomInputState(
       // 保険会社ごとに分類
       const insuranceMap = new Map<string, string[]>();
       
-      results.forEach(result => {
-        const companyName = result.metadata?.company_name || '保険会社情報なし';
-        const condition = result.content.substring(0, 100) + '...';
+      // 各検索結果を処理
+      for (const searchResult of results) {
+        const knowledge = searchResult.knowledge;
+        const companyId = knowledge.company_id;
+        const content = knowledge.chunk_text;
+        
+        // データベースから会社名を取得
+        const companyResult = await env.DB.prepare(
+          'SELECT company_name FROM insurance_companies WHERE id = ?'
+        ).bind(companyId).first<{ company_name: string }>();
+        
+        const companyName = companyResult?.company_name || `保険会社ID:${companyId}`;
+        
+        // 内容を150文字に制限
+        const summary = content.length > 150 
+          ? content.substring(0, 150) + '...' 
+          : content;
         
         if (!insuranceMap.has(companyName)) {
           insuranceMap.set(companyName, []);
         }
-        insuranceMap.get(companyName)!.push(condition);
-      });
+        insuranceMap.get(companyName)!.push(summary);
+        
+        // allResultsに変換して追加
+        allResults.push({
+          content: content,
+          score: searchResult.score,
+          metadata: {
+            company_id: companyId,
+            company_name: companyName,
+            source_file: knowledge.source_file,
+          }
+        });
+      }
       
       // 保険会社ごとに表示
       insuranceMap.forEach((conditions, company) => {
-        responseText += `• **${company}**: ${conditions.join('; ')}\n`;
+        responseText += `• **${company}**:\n`;
+        conditions.forEach(condition => {
+          responseText += `  - ${condition}\n`;
+        });
       });
     } else {
       responseText += `該当する保険適応情報が見つかりませんでした。\n`;
