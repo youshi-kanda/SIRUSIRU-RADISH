@@ -256,6 +256,24 @@ body.sidebar-open .chat-main { left: 240px; }
   margin-bottom: 0;
 }
 
+/* リスト項目の余白を調整 */
+.message.bot ul,
+.message.bot ol {
+  margin: 0.3em 0;
+  padding-left: 1.5em;
+}
+
+.message.bot li {
+  margin: 0.2em 0;
+  line-height: 1.4;
+}
+
+.message.bot hr {
+  margin: 0.5em 0;
+  border: none;
+  border-top: 1px solid #555;
+}
+
 /* 選択ボタンコンテナ */
 .selection-buttons {
   display: flex;

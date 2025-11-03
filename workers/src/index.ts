@@ -770,7 +770,7 @@ async function handleSymptomInputState(
     
     if (results.length > 0) {
       // 保険会社ごとに分類（条件とソース情報を一緒に保存）
-      const insuranceMap = new Map<string, Array<{content: string, source: string, score: number}>>();
+      const insuranceMap = new Map<string, Array<{content: string, source: string, score: number, canJoin: boolean}>>();
       
       // 各検索結果を処理
       for (const searchResult of results) {
@@ -795,6 +795,9 @@ async function handleSymptomInputState(
           // 「〇」を「○」に統一
           .replace(/〇/g, '○');
         
+        // 加入可能かどうかを判定
+        const canJoin = normalizedContent.includes('○');
+        
         // 内容を200文字に制限
         const summary = normalizedContent.length > 200 
           ? normalizedContent.substring(0, 200) + '...' 
@@ -807,7 +810,8 @@ async function handleSymptomInputState(
         insuranceMap.get(companyName)!.push({
           content: summary,
           source: sourceFile,
-          score: score
+          score: score,
+          canJoin: canJoin
         });
         
         // allResultsに変換して追加
@@ -822,17 +826,31 @@ async function handleSymptomInputState(
         });
       }
       
-      // 保険会社ごとに表示
+      // 保険会社ごとに表示（加入可能な保険を優先）
       let companyIndex = 0;
-      insuranceMap.forEach((items, company) => {
+      
+      // 加入可能な保険会社を先に表示
+      const sortedCompanies = Array.from(insuranceMap.entries()).sort((a, b) => {
+        const aHasJoinable = a[1].some(item => item.canJoin);
+        const bHasJoinable = b[1].some(item => item.canJoin);
+        if (aHasJoinable && !bHasJoinable) return -1;
+        if (!aHasJoinable && bHasJoinable) return 1;
+        return 0;
+      });
+      
+      sortedCompanies.forEach(([company, items]) => {
         companyIndex++;
+        
+        // 加入可能な項目を先に表示
+        const sortedItems = items.sort((a, b) => {
+          if (a.canJoin && !b.canJoin) return -1;
+          if (!a.canJoin && b.canJoin) return 1;
+          return 0;
+        });
+        
         responseText += `**${String.fromCharCode(65 + companyIndex - 1)}. ${company}**\n`;
-        items.forEach((item, idx) => {
+        sortedItems.forEach((item, idx) => {
           responseText += `   ${idx + 1}) ${item.content}\n`;
-          // 引用元情報をコンパクトに表示
-          const fileName = item.source.split('/').pop() || item.source;
-          const scorePercent = Math.round(item.score * 100);
-          responseText += `      📎 引用: ${fileName} (一致度: ${scorePercent}%)\n`;
         });
         responseText += `\n`;
       });
