@@ -960,12 +960,12 @@ async function handleFinalConfirmation(
   body: any
 ): Promise<Response> {
   // フォームデータを取得
-  const formData = body.form_data;
+  const customerInfo = body.customer_info;
 
   // フォームデータが未入力の場合、フォーム表示
-  if (!formData || !formData.name || !formData.gender || !formData.age) {
+  if (!customerInfo) {
     return createSuccessResponse({
-      answer: '最後に、お客様情報を入力してください。',
+      answer: '最後に、お客様情報を入力してください。\n※印は必須項目です。',
       conversation_id: conversationId,
       state: 'FINAL_CONFIRMATION',
       disease_detected: null,
@@ -974,16 +974,45 @@ async function handleFinalConfirmation(
       type: 'form',
       requires_input: 'form',
       form_fields: [
+        // 基本情報
         {
-          name: 'name',
-          label: 'お名前',
+          name: 'last_name',
+          label: '姓 ※',
           type: 'text',
           required: true,
-          placeholder: '例: 山田太郎',
+          placeholder: '例: 山田',
+        },
+        {
+          name: 'first_name',
+          label: '名 ※',
+          type: 'text',
+          required: true,
+          placeholder: '例: 太郎',
+        },
+        {
+          name: 'last_name_kana',
+          label: 'セイ ※',
+          type: 'text',
+          required: true,
+          placeholder: '例: ヤマダ',
+        },
+        {
+          name: 'first_name_kana',
+          label: 'メイ ※',
+          type: 'text',
+          required: true,
+          placeholder: '例: タロウ',
+        },
+        {
+          name: 'birth_date',
+          label: '生年月日 ※',
+          type: 'date',
+          required: true,
+          placeholder: '例: 1990-01-01',
         },
         {
           name: 'gender',
-          label: '性別',
+          label: '性別 ※',
           type: 'select',
           required: true,
           options: [
@@ -992,21 +1021,173 @@ async function handleFinalConfirmation(
             { value: 'other', label: 'その他' },
           ],
         },
+        // 連絡先
         {
-          name: 'age',
-          label: '年齢',
-          type: 'number',
+          name: 'phone',
+          label: '電話番号 ※',
+          type: 'tel',
           required: true,
-          placeholder: '例: 35',
+          placeholder: '例: 090-1234-5678',
+        },
+        {
+          name: 'email',
+          label: 'メールアドレス ※',
+          type: 'email',
+          required: true,
+          placeholder: '例: example@example.com',
+        },
+        // 住所（任意）
+        {
+          name: 'postal_code',
+          label: '郵便番号',
+          type: 'text',
+          required: false,
+          placeholder: '例: 123-4567',
+        },
+        {
+          name: 'prefecture',
+          label: '都道府県',
+          type: 'text',
+          required: false,
+          placeholder: '例: 東京都',
+        },
+        {
+          name: 'city',
+          label: '市区町村',
+          type: 'text',
+          required: false,
+          placeholder: '例: 渋谷区',
+        },
+        {
+          name: 'address',
+          label: '番地・建物名',
+          type: 'text',
+          required: false,
+          placeholder: '例: 1-2-3 ABCマンション101',
+        },
+        // 保険情報
+        {
+          name: 'desired_coverage_amount',
+          label: '希望保険金額（万円） ※',
+          type: 'select',
+          required: true,
+          options: [
+            { value: '500', label: '500万円' },
+            { value: '1000', label: '1,000万円' },
+            { value: '2000', label: '2,000万円' },
+            { value: '3000', label: '3,000万円' },
+            { value: '5000', label: '5,000万円' },
+          ],
+        },
+        {
+          name: 'desired_coverage_period',
+          label: '希望保険期間 ※',
+          type: 'select',
+          required: true,
+          options: [
+            { value: '10年', label: '10年' },
+            { value: '15年', label: '15年' },
+            { value: '20年', label: '20年' },
+            { value: '終身', label: '終身' },
+          ],
+        },
+        // その他情報
+        {
+          name: 'smoking_status',
+          label: '喫煙状況',
+          type: 'select',
+          required: false,
+          options: [
+            { value: 'non_smoker', label: '非喫煙者' },
+            { value: 'smoker', label: '喫煙者' },
+          ],
+        },
+        {
+          name: 'occupation',
+          label: '職業',
+          type: 'text',
+          required: false,
+          placeholder: '例: 会社員',
+        },
+        {
+          name: 'preferred_contact_datetime_1',
+          label: '連絡希望日時1',
+          type: 'datetime-local',
+          required: false,
+          placeholder: '',
+        },
+        {
+          name: 'preferred_contact_datetime_2',
+          label: '連絡希望日時2',
+          type: 'datetime-local',
+          required: false,
+          placeholder: '',
+        },
+        {
+          name: 'consultation_notes',
+          label: 'ご相談内容',
+          type: 'textarea',
+          required: false,
+          placeholder: '例: 既往歴について詳しく相談したい',
+        },
+        {
+          name: 'remarks',
+          label: '備考',
+          type: 'textarea',
+          required: false,
+          placeholder: 'その他ご要望など',
+        },
+        {
+          name: 'privacy_policy_agreed',
+          label: '個人情報保護方針に同意する ※',
+          type: 'checkbox',
+          required: true,
         },
       ],
     });
   }
 
-  // バリデーション
-  if (formData.age < 0 || formData.age > 120) {
+  // 必須項目のバリデーション
+  const requiredFields = [
+    'last_name', 'first_name', 'last_name_kana', 'first_name_kana',
+    'birth_date', 'gender', 'phone', 'email',
+    'desired_coverage_amount', 'desired_coverage_period', 'privacy_policy_agreed'
+  ];
+
+  const missingFields = requiredFields.filter(field => !customerInfo[field]);
+  
+  if (missingFields.length > 0) {
     return createSuccessResponse({
-      answer: '年齢が正しくありません。0〜120の範囲で入力してください。',
+      answer: `必須項目が入力されていません: ${missingFields.join(', ')}`,
+      conversation_id: conversationId,
+      state: 'FINAL_CONFIRMATION',
+      disease_detected: null,
+      confidence_score: 0,
+      sources: [],
+      type: 'error',
+      requires_input: 'form',
+    });
+  }
+
+  // メールアドレスの簡易バリデーション
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(customerInfo.email)) {
+    return createSuccessResponse({
+      answer: 'メールアドレスの形式が正しくありません。',
+      conversation_id: conversationId,
+      state: 'FINAL_CONFIRMATION',
+      disease_detected: null,
+      confidence_score: 0,
+      sources: [],
+      type: 'error',
+      requires_input: 'form',
+    });
+  }
+
+  // プライバシーポリシー同意確認
+  if (!customerInfo.privacy_policy_agreed) {
+    return createSuccessResponse({
+      answer: '個人情報保護方針への同意が必要です。',
       conversation_id: conversationId,
       state: 'FINAL_CONFIRMATION',
       disease_detected: null,
@@ -1022,19 +1203,19 @@ async function handleFinalConfirmation(
     env,
     conversationId,
     'COMPLETED',
-    { 
-      name: formData.name, 
-      gender: formData.gender, 
-      age: formData.age 
-    },
+    { customer_info: customerInfo },
     { 
       role: 'user', 
-      content: `お名前: ${formData.name}, 性別: ${formData.gender}, 年齢: ${formData.age}歳` 
+      content: `お客様情報: ${customerInfo.last_name} ${customerInfo.first_name}様` 
     }
   );
 
+  // 完了メッセージを作成
+  const fullName = `${customerInfo.last_name} ${customerInfo.first_name}`;
+  const genderLabel = customerInfo.gender === 'male' ? '男性' : customerInfo.gender === 'female' ? '女性' : 'その他';
+  
   return createSuccessResponse({
-    answer: `✅ **ヒアリング完了**\n\nお名前: ${formData.name}\n性別: ${formData.gender === 'male' ? '男性' : formData.gender === 'female' ? '女性' : 'その他'}\n年齢: ${formData.age}歳\n\n情報を保存しました。次のお問い合わせ対応をお願いします。`,
+    answer: `✅ **ヒアリング完了**\n\n${fullName}様、ご入力ありがとうございました。\n\n担当者より、ご連絡先（${customerInfo.phone}）へ折り返しご連絡させていただきます。\n\n今しばらくお待ちください。`,
     conversation_id: conversationId,
     state: 'COMPLETED',
     disease_detected: null,

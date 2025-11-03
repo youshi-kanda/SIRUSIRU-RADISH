@@ -1011,6 +1011,11 @@ async function sendMessage(userInput, files = []) {
     // 選択ボタンがある場合は一緒に表示
     addMessage(botResponse, "bot", data.options);
     
+    // フォームがある場合は表示
+    if (data.requires_input === 'form' && data.form_fields) {
+      addCustomerForm(data.form_fields);
+    }
+    
     // 症状入力の場合、疾病候補を表示
     if (data.type === "symptom" && data.suggestions && data.suggestions.length > 0) {
       const suggestionsText = "\n\n以下の疾病に該当する可能性があります:\n" + 
@@ -1869,6 +1874,210 @@ function addSelectionButtons(options) {
   });
 
   chatMessages.appendChild(buttonContainer);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// ================================
+// お客様情報フォームを表示する関数
+// ================================
+function addCustomerForm(formFields) {
+  const chatMessages = document.getElementById("chat-messages");
+  if (!chatMessages) return;
+
+  const formContainer = document.createElement("div");
+  formContainer.className = "customer-form-container";
+
+  const form = document.createElement("form");
+  form.className = "customer-form";
+  form.id = "customer-info-form";
+
+  formFields.forEach(field => {
+    const fieldGroup = document.createElement("div");
+    fieldGroup.className = "form-field-group";
+
+    const label = document.createElement("label");
+    label.textContent = field.label;
+    label.setAttribute("for", field.name);
+    fieldGroup.appendChild(label);
+
+    let inputElement;
+
+    switch (field.type) {
+      case 'text':
+      case 'email':
+      case 'tel':
+      case 'date':
+      case 'datetime-local':
+        inputElement = document.createElement("input");
+        inputElement.type = field.type;
+        inputElement.name = field.name;
+        inputElement.id = field.name;
+        inputElement.placeholder = field.placeholder || "";
+        if (field.required) {
+          inputElement.required = true;
+        }
+        break;
+
+      case 'number':
+        inputElement = document.createElement("input");
+        inputElement.type = "number";
+        inputElement.name = field.name;
+        inputElement.id = field.name;
+        inputElement.placeholder = field.placeholder || "";
+        if (field.required) {
+          inputElement.required = true;
+        }
+        break;
+
+      case 'select':
+        inputElement = document.createElement("select");
+        inputElement.name = field.name;
+        inputElement.id = field.name;
+        if (field.required) {
+          inputElement.required = true;
+        }
+        
+        // デフォルトオプション
+        const defaultOption = document.createElement("option");
+        defaultOption.value = "";
+        defaultOption.textContent = "選択してください";
+        inputElement.appendChild(defaultOption);
+
+        // 選択肢を追加
+        if (field.options) {
+          field.options.forEach(opt => {
+            const option = document.createElement("option");
+            option.value = opt.value;
+            option.textContent = opt.label;
+            inputElement.appendChild(option);
+          });
+        }
+        break;
+
+      case 'textarea':
+        inputElement = document.createElement("textarea");
+        inputElement.name = field.name;
+        inputElement.id = field.name;
+        inputElement.placeholder = field.placeholder || "";
+        inputElement.rows = 3;
+        if (field.required) {
+          inputElement.required = true;
+        }
+        break;
+
+      case 'checkbox':
+        inputElement = document.createElement("input");
+        inputElement.type = "checkbox";
+        inputElement.name = field.name;
+        inputElement.id = field.name;
+        if (field.required) {
+          inputElement.required = true;
+        }
+        // チェックボックスの場合はラベルを後に配置
+        fieldGroup.innerHTML = '';
+        fieldGroup.appendChild(inputElement);
+        const checkboxLabel = document.createElement("label");
+        checkboxLabel.textContent = field.label;
+        checkboxLabel.setAttribute("for", field.name);
+        checkboxLabel.style.display = 'inline';
+        checkboxLabel.style.marginLeft = '8px';
+        fieldGroup.appendChild(checkboxLabel);
+        break;
+
+      default:
+        inputElement = document.createElement("input");
+        inputElement.type = "text";
+        inputElement.name = field.name;
+        inputElement.id = field.name;
+    }
+
+    if (field.type !== 'checkbox') {
+      fieldGroup.appendChild(inputElement);
+    }
+    form.appendChild(fieldGroup);
+  });
+
+  // 送信ボタン
+  const submitButton = document.createElement("button");
+  submitButton.type = "submit";
+  submitButton.className = "form-submit-button";
+  submitButton.textContent = "送信する";
+  form.appendChild(submitButton);
+
+  // フォーム送信イベント
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    
+    // フォームデータを収集
+    const formData = new FormData(form);
+    const customerInfo = {};
+    
+    formData.forEach((value, key) => {
+      customerInfo[key] = value;
+    });
+
+    // チェックボックスの値を真偽値に変換
+    formFields.forEach(field => {
+      if (field.type === 'checkbox') {
+        customerInfo[field.name] = form.elements[field.name].checked;
+      }
+    });
+
+    // サーバーに送信
+    try {
+      startLoadingState();
+      submitButton.disabled = true;
+      submitButton.textContent = "送信中...";
+
+      const requestBody = {
+        customer_info: customerInfo,
+        conversation_id: conversationId
+      };
+
+      const userEmail = localStorage.getItem("userEmail");
+      if (userEmail) {
+        requestBody.user_id = userEmail;
+      }
+
+      const resp = await apiFetch(getConfig('ENDPOINTS.CHAT_MESSAGES'), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!resp.ok) {
+        const errorText = await resp.text();
+        console.error("Form submission error:", errorText);
+        throw new Error("フォームの送信に失敗しました");
+      }
+
+      const data = await resp.json();
+
+      // 会話ID更新
+      conversationId = data.conversation_id || conversationId;
+
+      // 完了メッセージを表示
+      const botResponse = data.answer || "送信完了しました";
+      addMessage(botResponse, "bot");
+
+      // フォームを削除
+      if (formContainer.parentNode) {
+        formContainer.parentNode.removeChild(formContainer);
+      }
+
+    } catch (error) {
+      console.error("Form submission error:", error);
+      addMessage("エラーが発生しました。もう一度お試しください。", "system");
+      submitButton.disabled = false;
+      submitButton.textContent = "送信する";
+    } finally {
+      endLoadingState();
+      enableUserInput();
+    }
+  });
+
+  formContainer.appendChild(form);
+  chatMessages.appendChild(formContainer);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 

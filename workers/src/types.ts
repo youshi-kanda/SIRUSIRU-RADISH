@@ -61,6 +61,40 @@ export interface CollectedData {
   age?: number;                  // 年齢
 }
 
+export interface CustomerInformation {
+  // 基本情報（必須）
+  last_name: string;             // 姓
+  first_name: string;            // 名
+  last_name_kana: string;        // セイ
+  first_name_kana: string;       // メイ
+  birth_date: string;            // 生年月日 YYYY-MM-DD
+  gender: 'male' | 'female' | 'other'; // 性別
+  
+  // 連絡先（必須）
+  phone: string;                 // 電話番号
+  email: string;                 // メールアドレス
+  
+  // 保険情報（必須）
+  desired_coverage_amount: number; // 希望保険金額（万円）
+  desired_coverage_period: string; // 希望保険期間
+  
+  // 任意項目
+  postal_code?: string;          // 郵便番号
+  prefecture?: string;           // 都道府県
+  city?: string;                 // 市区町村
+  address?: string;              // 番地・建物名
+  smoking_status?: 'smoker' | 'non_smoker'; // 喫煙状況
+  occupation?: string;           // 職業
+  preferred_contact_datetime_1?: string; // 連絡希望日時1
+  preferred_contact_datetime_2?: string; // 連絡希望日時2
+  consultation_notes?: string;   // ご相談内容
+  remarks?: string;              // 備考
+  
+  // メタ情報
+  privacy_policy_agreed: boolean; // 個人情報保護方針同意
+}
+
+
 export interface Conversation {
   id: string; // conversation_id
   user_id: string | null;
