@@ -769,14 +769,16 @@ async function handleSymptomInputState(
     responseText += `### ${i + 1}. ${candidate.disease_name}\n\n`;
     
     if (results.length > 0) {
-      // 保険会社ごとに分類
-      const insuranceMap = new Map<string, string[]>();
+      // 保険会社ごとに分類（条件とソース情報を一緒に保存）
+      const insuranceMap = new Map<string, Array<{content: string, source: string, score: number}>>();
       
       // 各検索結果を処理
       for (const searchResult of results) {
         const knowledge = searchResult.knowledge;
         const companyId = knowledge.company_id;
         const content = knowledge.chunk_text;
+        const sourceFile = knowledge.source_file || 'ファイル名不明';
+        const score = searchResult.score;
         
         // データベースから会社名を取得
         const companyResult = await env.DB.prepare(
@@ -801,7 +803,12 @@ async function handleSymptomInputState(
         if (!insuranceMap.has(companyName)) {
           insuranceMap.set(companyName, []);
         }
-        insuranceMap.get(companyName)!.push(summary);
+        
+        insuranceMap.get(companyName)!.push({
+          content: summary,
+          source: sourceFile,
+          score: score
+        });
         
         // allResultsに変換して追加
         allResults.push({
@@ -810,18 +817,22 @@ async function handleSymptomInputState(
           metadata: {
             company_id: companyId,
             company_name: companyName,
-            source_file: knowledge.source_file,
+            source_file: sourceFile,
           }
         });
       }
       
       // 保険会社ごとに表示
       let companyIndex = 0;
-      insuranceMap.forEach((conditions, company) => {
+      insuranceMap.forEach((items, company) => {
         companyIndex++;
         responseText += `**${String.fromCharCode(65 + companyIndex - 1)}. ${company}**\n`;
-        conditions.forEach((condition, idx) => {
-          responseText += `   ${idx + 1}) ${condition}\n`;
+        items.forEach((item, idx) => {
+          responseText += `   ${idx + 1}) ${item.content}\n`;
+          // 引用元情報をコンパクトに表示
+          const fileName = item.source.split('/').pop() || item.source;
+          const scorePercent = Math.round(item.score * 100);
+          responseText += `      📎 引用: ${fileName} (一致度: ${scorePercent}%)\n`;
         });
         responseText += `\n`;
       });
