@@ -237,6 +237,53 @@ body.sidebar-open .chat-main { left: 240px; }
   white-space: pre-wrap;
   word-wrap: break-word;
 }
+
+/* 選択ボタンコンテナ */
+.selection-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 15px 0;
+  padding: 0 15px;
+  max-width: 80%;
+  align-self: flex-start;
+}
+
+/* 選択ボタン */
+.selection-button {
+  background-color: #CB6847;
+  color: #FFFFFF;
+  border: none;
+  border-radius: 20px;
+  padding: 12px 20px;
+  font-size: 1em;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: left;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.selection-button:hover:not(:disabled) {
+  background-color: #E07855;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.selection-button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.selection-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.selection-button.selected {
+  background-color: #4CAF50;
+  font-weight: bold;
+}
+
 /* 音声ボタン重ね配置例 */
 .text-to-audio-btn {
   position: absolute;

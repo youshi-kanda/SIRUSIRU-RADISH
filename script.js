@@ -630,8 +630,8 @@ async function processInput(inputText, audioFile, uploadedFileId = null) {
 async function displayInitialGreeting() {
   try {
     // 既にメッセージがある場合はスキップ
-    const chatHistory = document.getElementById("chat-history");
-    if (chatHistory && chatHistory.children.length > 0) {
+    const chatMessages = document.getElementById("chat-messages");
+    if (chatMessages && chatMessages.children.length > 0) {
       return;
     }
 
@@ -643,31 +643,39 @@ async function displayInitialGreeting() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        query: '',
         conversation_id: null,
-        user_id: 'test-user'
+        user_id: localStorage.getItem("userEmail") || 'anonymous'
       })
     });
 
     if (response.ok) {
       const data = await response.json();
+      console.log('初回メッセージ取得:', data);
+      
       if (data.answer) {
-        addMessage(data.answer, 'bot');
+        // 選択ボタンがあれば一緒に表示
+        addMessage(data.answer, 'bot', data.options);
+        
         if (data.conversation_id) {
           conversationId = data.conversation_id;
         }
       }
+    } else {
+      console.error('初回メッセージ取得エラー:', await response.text());
+      // エラーの場合はデフォルトメッセージを表示
+      displayDefaultGreeting();
     }
   } catch (error) {
     console.error('初回メッセージ取得エラー:', error);
     // エラーの場合はデフォルトメッセージを表示
-    addMessage(
-      'お電話ありがとうございます。保険加入のご相談ですね。\n' +
-      '何か気になる症状や、既往症がございますか？\n' +
-      '具体的な症状（例：胃が痛い）や病名（例：胃炎）をお聞かせください。',
-      'bot'
-    );
+    displayDefaultGreeting();
   }
+}
+
+// デフォルトメッセージ表示関数
+function displayDefaultGreeting() {
+  const defaultMessage = 'こんにちは！保険引受審査AIアシスタントです。\n\nご質問をお聞かせください。';
+  addMessage(defaultMessage, 'bot');
 }
 
 
@@ -1000,7 +1008,8 @@ async function sendMessage(userInput, files = []) {
     const botResponse = data.answer || "応答がありません";
     lastBotResponse = botResponse;
 
-    addMessage(botResponse, "bot");
+    // 選択ボタンがある場合は一緒に表示
+    addMessage(botResponse, "bot", data.options);
     
     // 症状入力の場合、疾病候補を表示
     if (data.type === "symptom" && data.suggestions && data.suggestions.length > 0) {
@@ -1719,7 +1728,7 @@ async function playBotResponse(text) {
 // ================================
 // 15) チャットメッセージ表示 (Markdown)
 // ================================
-function addMessage(text, sender) {
+function addMessage(text, sender, options = null) {
   const chatMessages = document.getElementById("chat-messages");
   if (!chatMessages) return;
 
@@ -1734,7 +1743,8 @@ function addMessage(text, sender) {
     lastNode &&
     lastNode.classList.contains("message") &&
     lastNode.classList.contains(sender) &&
-    lastNode.textContent === text
+    lastNode.textContent === text &&
+    !options // optionsがある場合は重複ガードを無視
   ) {
     return;
   }
@@ -1759,6 +1769,11 @@ function addMessage(text, sender) {
 
   chatMessages.appendChild(msgDiv);
 
+  // 選択ボタンを追加
+  if (options && Array.isArray(options) && options.length > 0) {
+    addSelectionButtons(options);
+  }
+
   // スクロール位置調整
   if (sender === "bot") {
     msgDiv.scrollIntoView({ block: "start", inline: "nearest", behavior: "auto" });
@@ -1768,6 +1783,95 @@ function addMessage(text, sender) {
 
   cleanupChatMessages(); // 古いメッセージを削除
 }
+
+// ================================
+// 選択ボタンを表示する関数
+// ================================
+function addSelectionButtons(options) {
+  const chatMessages = document.getElementById("chat-messages");
+  if (!chatMessages) return;
+
+  const buttonContainer = document.createElement("div");
+  buttonContainer.className = "selection-buttons";
+
+  options.forEach(option => {
+    const button = document.createElement("button");
+    button.className = "selection-button";
+    button.textContent = option.label;
+    button.dataset.value = option.value;
+    
+    button.addEventListener("click", async () => {
+      // すべての選択ボタンを無効化
+      buttonContainer.querySelectorAll(".selection-button").forEach(btn => {
+        btn.disabled = true;
+        btn.style.opacity = "0.5";
+      });
+      
+      // クリックされたボタンを強調
+      button.classList.add("selected");
+      
+      // 選択内容をユーザーメッセージとして表示
+      addMessage(option.label, "user");
+      
+      // サーバーに選択を送信
+      try {
+        startLoadingState();
+        
+        const requestBody = {
+          selection: option.value,
+          conversation_id: conversationId
+        };
+        
+        const userEmail = localStorage.getItem("userEmail");
+        if (userEmail) {
+          requestBody.user_id = userEmail;
+        }
+        
+        const resp = await apiFetch(getConfig('ENDPOINTS.CHAT_MESSAGES'), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody)
+        });
+        
+        if (!resp.ok) {
+          const errorText = await resp.text();
+          console.error("Selection API Error:", errorText);
+          throw new Error("選択の送信に失敗しました");
+        }
+        
+        const data = await resp.json();
+        
+        // 会話ID更新
+        conversationId = data.conversation_id || conversationId;
+        
+        // 回答を表示
+        const botResponse = data.answer || "応答がありません";
+        lastBotResponse = botResponse;
+        
+        // 新しいoptionsがあれば一緒に表示
+        addMessage(botResponse, "bot", data.options);
+        
+        // ボタンコンテナを削除
+        if (buttonContainer.parentNode) {
+          buttonContainer.parentNode.removeChild(buttonContainer);
+        }
+        
+      } catch (error) {
+        console.error("Selection error:", error);
+        addMessage("エラーが発生しました。もう一度お試しください。", "system");
+      } finally {
+        endLoadingState();
+        enableUserInput();
+      }
+    });
+    
+    buttonContainer.appendChild(button);
+  });
+
+  chatMessages.appendChild(buttonContainer);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
 
 
 // ================================
