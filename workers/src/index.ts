@@ -735,20 +735,27 @@ async function handleSymptomInputState(
   // GPT-4o-miniで疾病候補を生成
   const diseaseCandidates = await generateDiseaseCandidates(env, symptoms.join('、'));
   
-  // 診断名候補と保険適応を提示
-  let responseText = `症状を確認しました。\n\n**以下の疾病に該当する可能性があります:**\n\n`;
+  // === STEP 1: 疾病可能性の一覧表示 ===
+  let responseText = `症状を確認しました。\n\n`;
+  responseText += `━━━━━━━━━━━━━━━━━━━━\n`;
+  responseText += `**📋 該当する可能性のある疾病**\n`;
+  responseText += `━━━━━━━━━━━━━━━━━━━━\n\n`;
   
   diseaseCandidates.candidates.forEach((candidate, index) => {
-    responseText += `${index + 1}. ${candidate.disease_name}\n`;
+    responseText += `${index + 1}. **${candidate.disease_name}**\n`;
   });
   
-  responseText += `\n---\n\n`;
+  responseText += `\n━━━━━━━━━━━━━━━━━━━━\n`;
+  responseText += `**🏥 各疾病の保険適応情報**\n`;
+  responseText += `━━━━━━━━━━━━━━━━━━━━\n\n`;
   
   // 全ての検索結果を保存
   let allResults: any[] = [];
   
-  // 各疾病の詳細と保険適応を提示
-  for (const candidate of diseaseCandidates.candidates) {
+  // === STEP 2: 各疾病の保険適応を提示 ===
+  for (let i = 0; i < diseaseCandidates.candidates.length; i++) {
+    const candidate = diseaseCandidates.candidates[i];
+    
     // ベクトル検索で該当疾病の保険適応情報を取得
     const results = await searchKnowledgeByVector(
       env,
@@ -759,7 +766,7 @@ async function handleSymptomInputState(
     
     console.log(`${candidate.disease_name}の検索結果:`, results.length);
     
-    responseText += `**${candidate.disease_name}の保険適応:**\n\n`;
+    responseText += `### ${i + 1}. ${candidate.disease_name}\n\n`;
     
     if (results.length > 0) {
       // 保険会社ごとに分類
@@ -778,9 +785,9 @@ async function handleSymptomInputState(
         
         const companyName = companyResult?.company_name || `保険会社ID:${companyId}`;
         
-        // 内容を150文字に制限
-        const summary = content.length > 150 
-          ? content.substring(0, 150) + '...' 
+        // 内容を200文字に制限
+        const summary = content.length > 200 
+          ? content.substring(0, 200) + '...' 
           : content;
         
         if (!insuranceMap.has(companyName)) {
@@ -801,20 +808,27 @@ async function handleSymptomInputState(
       }
       
       // 保険会社ごとに表示
+      let companyIndex = 0;
       insuranceMap.forEach((conditions, company) => {
-        responseText += `• **${company}**:\n`;
-        conditions.forEach(condition => {
-          responseText += `  - ${condition}\n`;
+        companyIndex++;
+        responseText += `**${String.fromCharCode(65 + companyIndex - 1)}. ${company}**\n`;
+        conditions.forEach((condition, idx) => {
+          responseText += `   ${idx + 1}) ${condition}\n`;
         });
+        responseText += `\n`;
       });
     } else {
-      responseText += `該当する保険適応情報が見つかりませんでした。\n`;
+      responseText += `   ℹ️ 該当する保険適応情報が見つかりませんでした。\n\n`;
     }
     
-    responseText += `\n`;
+    // 疾病間の区切り線（最後の疾病以外）
+    if (i < diseaseCandidates.candidates.length - 1) {
+      responseText += `---\n\n`;
+    }
   }
   
-  responseText += `最終確認へ進んでよろしいですか？`;
+  responseText += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
+  responseText += `✅ 最終確認へ進んでよろしいですか？`;
   
   const nextState = 'RESULT';
   await updateConversationState(env, conversationId, nextState, updatedData);
