@@ -785,10 +785,18 @@ async function handleSymptomInputState(
         
         const companyName = companyResult?.company_name || `保険会社ID:${companyId}`;
         
+        // 内容を正規化（加入可否の表記を統一）
+        let normalizedContent = content
+          // 「加入可能」「加入不可」を「○」「×」に変換
+          .replace(/加入可能/g, '○')
+          .replace(/加入不可/g, '×')
+          // 「〇」を「○」に統一
+          .replace(/〇/g, '○');
+        
         // 内容を200文字に制限
-        const summary = content.length > 200 
-          ? content.substring(0, 200) + '...' 
-          : content;
+        const summary = normalizedContent.length > 200 
+          ? normalizedContent.substring(0, 200) + '...' 
+          : normalizedContent;
         
         if (!insuranceMap.has(companyName)) {
           insuranceMap.set(companyName, []);
@@ -797,7 +805,7 @@ async function handleSymptomInputState(
         
         // allResultsに変換して追加
         allResults.push({
-          content: content,
+          content: normalizedContent,
           score: searchResult.score,
           metadata: {
             company_id: companyId,
