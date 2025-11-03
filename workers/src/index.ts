@@ -98,6 +98,24 @@ export default {
         return response;
       }
 
+      // User accessible knowledge bases endpoint
+      if (url.pathname === '/api/user/accessible-knowledge-bases' && request.method === 'GET') {
+        const response = await handleAccessibleKnowledgeBases(request, env);
+        Object.entries(corsHeaders).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+        return response;
+      }
+
+      // Token consume endpoint (dummy implementation)
+      if (url.pathname === '/app/api/tokens/consume' && request.method === 'POST') {
+        const response = await handleTokenConsume(request, env);
+        Object.entries(corsHeaders).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+        return response;
+      }
+
       return new Response(
         JSON.stringify({ error: 'Not Found', code: 'NOT_FOUND' }),
         {
@@ -943,4 +961,77 @@ async function handleDjangoTokenRefreshProxy(request: Request, env: Env): Promis
     );
   }
 }
+
+/**
+ * ユーザーがアクセス可能なナレッジベース一覧を取得
+ */
+async function handleAccessibleKnowledgeBases(request: Request, env: Env): Promise<Response> {
+  try {
+    // 全ユーザーが全ナレッジベースにアクセス可能とする
+    // 必要に応じて認証チェックを追加可能
+    return new Response(
+      JSON.stringify({
+        data: [
+          {
+            id: 1,
+            name: "保険引受審査ナレッジベース",
+            description: "医療保険の引受審査に関するナレッジベース",
+            document_count: 2526,
+            created_at: new Date().toISOString()
+          }
+        ]
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  } catch (error) {
+    console.error('Accessible knowledge bases error:', error);
+    return new Response(
+      JSON.stringify({ error: 'ナレッジベース一覧取得中にエラーが発生しました' }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
+}
+
+/**
+ * トークン消費記録（ダミー実装）
+ */
+async function handleTokenConsume(request: Request, env: Env): Promise<Response> {
+  try {
+    // リクエストボディを取得（ログ用）
+    const body = await request.json() as { tokens?: number };
+    console.log('Token consume request:', body);
+    
+    // ダミーレスポンスを返す
+    return new Response(
+      JSON.stringify({
+        success: true,
+        remaining_tokens: 999999,
+        consumed_tokens: body.tokens || 0
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  } catch (error) {
+    console.error('Token consume error:', error);
+    return new Response(
+      JSON.stringify({ 
+        success: false,
+        error: 'トークン消費記録中にエラーが発生しました' 
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
+}
+
 
