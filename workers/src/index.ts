@@ -851,7 +851,7 @@ async function handleSymptomInputState(
         responseText += `**${String.fromCharCode(65 + companyIndex - 1)}. ${company}**\n`;
         sortedItems.forEach((item, idx) => {
           responseText += `   ${idx + 1}) ${item.content}\n`;
-          // 引用元情報をコンパクトに表示
+          // 引用元情報をコンパクトに表示（各項目の直下）
           const fileName = item.source.split('/').pop() || item.source;
           const scorePercent = Math.round(item.score * 100);
           responseText += `      📎 引用: ${fileName} (一致度: ${scorePercent}%)\n`;
@@ -862,9 +862,9 @@ async function handleSymptomInputState(
       responseText += `   ℹ️ 該当する保険適応情報が見つかりませんでした。\n\n`;
     }
     
-    // 疾病間の区切り線（最後の疾病以外）
+    // 疾病間の区切り線（疾病ブロックの最後、最後の疾病以外）
     if (i < diseaseCandidates.candidates.length - 1) {
-      responseText += `---\n\n`;
+      responseText += `\n---\n\n`;
     }
   }
   
