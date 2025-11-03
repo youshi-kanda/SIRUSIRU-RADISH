@@ -851,6 +851,10 @@ async function handleSymptomInputState(
         responseText += `**${String.fromCharCode(65 + companyIndex - 1)}. ${company}**\n`;
         sortedItems.forEach((item, idx) => {
           responseText += `   ${idx + 1}) ${item.content}\n`;
+          // 引用元情報をコンパクトに表示
+          const fileName = item.source.split('/').pop() || item.source;
+          const scorePercent = Math.round(item.score * 100);
+          responseText += `      📎 引用: ${fileName} (一致度: ${scorePercent}%)\n`;
         });
         responseText += `\n`;
       });

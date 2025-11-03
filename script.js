@@ -1023,19 +1023,18 @@ async function sendMessage(userInput, files = []) {
       addMessage(suggestionsText, "system");
     }
     
-    // ナレッジソースがあれば表示
-    if (data.sources && data.sources.length > 0) {
-      // 引用表示機能があれば使用
-      if (typeof addCitation === 'function') {
-        data.sources.forEach(source => {
-          addCitation({
-            document_name: source.title || "参照ナレッジ",
-            content: source.content || "",
-            score: source.score || 0
-          });
-        });
-      }
-    }
+    // ナレッジソースの引用表示は不要（チャット内に📎引用として表示済み）
+    // if (data.sources && data.sources.length > 0) {
+    //   if (typeof addCitation === 'function') {
+    //     data.sources.forEach(source => {
+    //       addCitation({
+    //         document_name: source.title || "参照ナレッジ",
+    //         content: source.content || "",
+    //         score: source.score || 0
+    //       });
+    //     });
+    //   }
+    // }
 
     // 会話履歴のキャッシュを更新
     if (conversationId) {
