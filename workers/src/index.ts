@@ -731,24 +731,78 @@ async function handleSymptomInputState(
   );
 
   const updatedData = { ...collectedData, symptoms };
-  const nextState = determineNextState('SYMPTOM_INPUT', updatedData);
-
-  if (nextState === 'SYMPTOM_FOLLOWUP') {
-    await updateConversationState(env, conversationId, nextState, {});
-    return createSuccessResponse({
-      answer: 'ありがとうございます。\n\n**他に気になる症状はございますか？**\n\nあれば教えてください。なければ「なし」と入力してください。',
-      conversation_id: conversationId,
-      state: nextState,
-      disease_detected: null,
-      confidence_score: 0,
-      sources: [],
-      type: 'question',
-      requires_input: 'text',
-    });
-  } else {
-    await updateConversationState(env, conversationId, nextState, {});
-    return await handleResultStateNew(env, conversationId, updatedData);
+  
+  // GPT-4o-miniで疾病候補を生成
+  const diseaseCandidates = await generateDiseaseCandidates(env, symptoms.join('、'));
+  
+  // 診断名候補と保険適応を提示
+  let responseText = `症状を確認しました。\n\n**以下の疾病に該当する可能性があります:**\n\n`;
+  
+  diseaseCandidates.candidates.forEach((candidate, index) => {
+    responseText += `${index + 1}. ${candidate.disease_name}\n`;
+  });
+  
+  responseText += `\n---\n\n`;
+  
+  // 全ての検索結果を保存
+  let allResults: any[] = [];
+  
+  // 各疾病の詳細と保険適応を提示
+  for (const candidate of diseaseCandidates.candidates) {
+    // ベクトル検索で該当疾病の保険適応情報を取得
+    const results = await searchKnowledgeByVector(
+      env,
+      candidate.disease_name,
+      3 // 上位3件
+    );
+    
+    allResults = allResults.concat(results);
+    
+    responseText += `**${candidate.disease_name}の保険適応:**\n\n`;
+    
+    if (results.length > 0) {
+      // 保険会社ごとに分類
+      const insuranceMap = new Map<string, string[]>();
+      
+      results.forEach(result => {
+        const companyName = result.metadata?.company_name || '保険会社情報なし';
+        const condition = result.content.substring(0, 100) + '...';
+        
+        if (!insuranceMap.has(companyName)) {
+          insuranceMap.set(companyName, []);
+        }
+        insuranceMap.get(companyName)!.push(condition);
+      });
+      
+      // 保険会社ごとに表示
+      insuranceMap.forEach((conditions, company) => {
+        responseText += `• **${company}**: ${conditions.join('; ')}\n`;
+      });
+    } else {
+      responseText += `該当する保険適応情報が見つかりませんでした。\n`;
+    }
+    
+    responseText += `\n`;
   }
+  
+  responseText += `最終確認へ進んでよろしいですか？`;
+  
+  const nextState = 'RESULT';
+  await updateConversationState(env, conversationId, nextState, updatedData);
+
+  return createSuccessResponse({
+    answer: responseText,
+    conversation_id: conversationId,
+    state: nextState,
+    disease_detected: null,
+    confidence_score: 0.7,
+    sources: allResults,
+    type: 'result',
+    options: [
+      { value: 'proceed', label: '最終確認へ進む' }
+    ],
+    requires_input: 'selection',
+  });
 }
 
 /**
