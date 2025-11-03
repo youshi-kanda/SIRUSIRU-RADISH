@@ -41,6 +41,7 @@ package-lock.json
 
 # Data
 data/
+database/
 
 # Project specific
 radish.yml
