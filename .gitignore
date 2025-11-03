@@ -35,6 +35,13 @@ temp/
 # OS
 Thumbs.db
 
+# Node.js
+node_modules/
+package-lock.json
+
+# Data
+data/
+
 # Project specific
 radish.yml
 workers_final_complete.js

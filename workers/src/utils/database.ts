@@ -2,41 +2,151 @@
  * SIRUSIRU Radish AI Engine - Utility Functions
  */
 
-import type { Env, Knowledge, KnowledgeSearchResult } from '../types';
+import type { Env } from '../types';
+
+interface VectorKnowledge {
+  id: number;
+  company_id: number;
+  source_file: string;
+  chunk_text: string;
+  embedding: string; // JSON string
+  created_at: string;
+}
+
+interface VectorSearchResult {
+  knowledge: VectorKnowledge;
+  score: number;
+  rank: number;
+}
 
 /**
- * D1データベースで全文検索を実行
+ * コサイン類似度を計算
  */
-export async function searchKnowledge(
+function cosineSimilarity(vecA: number[], vecB: number[]): number {
+  if (vecA.length !== vecB.length) {
+    throw new Error('Vectors must have the same length');
+  }
+
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+
+  for (let i = 0; i < vecA.length; i++) {
+    dotProduct += vecA[i] * vecB[i];
+    normA += vecA[i] * vecA[i];
+    normB += vecB[i] * vecB[i];
+  }
+
+  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+/**
+ * ベクトル検索を実行（OpenAI Embeddingsを使用）
+ */
+export async function searchKnowledgeByVector(
   env: Env,
   query: string,
-  limit: number = 10
-): Promise<KnowledgeSearchResult[]> {
+  companyId?: number,
+  limit: number = 5
+): Promise<VectorSearchResult[]> {
   try {
-    // FTS5を使用した全文検索
-    // スコアリング: タイトル一致=10点、本文一致=5点
-    const stmt = env.DB.prepare(`
-      SELECT 
-        k.*,
-        CASE
-          WHEN k.disease_name LIKE ? THEN 10
-          WHEN k.disease_name LIKE ? THEN 8
-          ELSE fts.rank * -1
-        END as score
-      FROM knowledge k
-      INNER JOIN knowledge_fts fts ON k.id = fts.rowid
-      WHERE knowledge_fts MATCH ?
-      ORDER BY score DESC
-      LIMIT ?
-    `);
+    // 1. クエリをベクトル化
+    const embeddingResponse = await fetch('https://api.openai.com/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'text-embedding-3-small',
+        input: query,
+      }),
+    });
 
-    const exactMatch = query;
-    const partialMatch = `%${query}%`;
-    const ftsQuery = query.split('').join('* ') + '*'; // ワイルドカード検索
+    if (!embeddingResponse.ok) {
+      throw new Error(`OpenAI API error: ${embeddingResponse.status}`);
+    }
 
-    const results = await stmt
-      .bind(exactMatch, partialMatch, ftsQuery, limit)
-      .all<Knowledge>();
+    const embeddingData: any = await embeddingResponse.json();
+    const queryVector: number[] = embeddingData.data[0].embedding;
+
+    // 2. D1から全ベクトルを取得（company_idでフィルタ）
+    let stmt;
+    if (companyId) {
+      stmt = env.DB.prepare('SELECT * FROM knowledge_vectors WHERE company_id = ?');
+      stmt = stmt.bind(companyId);
+    } else {
+      stmt = env.DB.prepare('SELECT * FROM knowledge_vectors');
+    }
+
+    const results = await stmt.all<VectorKnowledge>();
+
+    if (!results.results || results.results.length === 0) {
+      return [];
+    }
+
+    // 3. 各ベクトルとの類似度を計算
+    const scoredResults = results.results.map((knowledge) => {
+      const knowledgeVector: number[] = JSON.parse(knowledge.embedding);
+      const similarity = cosineSimilarity(queryVector, knowledgeVector);
+      
+      return {
+        knowledge,
+        score: similarity,
+        rank: 0, // 後でソート後に設定
+      };
+    });
+
+    // 4. 類似度でソート（降順）
+    scoredResults.sort((a, b) => b.score - a.score);
+
+    // 5. 上位N件を返す
+    const topResults = scoredResults.slice(0, limit);
+    
+    // ランク付け
+    topResults.forEach((result, index) => {
+      result.rank = index + 1;
+    });
+
+    return topResults;
+  } catch (error) {
+    console.error('Vector search error:', error);
+    return [];
+  }
+}
+
+/**
+ * FTS5を使用したフォールバック検索（ベクトル検索が使えない場合）
+ */
+export async function searchKnowledgeByText(
+  env: Env,
+  query: string,
+  companyId?: number,
+  limit: number = 5
+): Promise<VectorSearchResult[]> {
+  try {
+    let stmt;
+    if (companyId) {
+      stmt = env.DB.prepare(`
+        SELECT kv.* 
+        FROM knowledge_vectors kv
+        INNER JOIN knowledge_fts fts ON kv.id = fts.rowid
+        WHERE fts.chunk_text MATCH ? AND kv.company_id = ?
+        LIMIT ?
+      `);
+      stmt = stmt.bind(query, companyId, limit);
+    } else {
+      stmt = env.DB.prepare(`
+        SELECT kv.* 
+        FROM knowledge_vectors kv
+        INNER JOIN knowledge_fts fts ON kv.id = fts.rowid
+        WHERE fts.chunk_text MATCH ?
+        LIMIT ?
+      `);
+      stmt = stmt.bind(query, limit);
+    }
+
+    const results = await stmt.all<VectorKnowledge>();
 
     if (!results.results) {
       return [];
@@ -44,54 +154,11 @@ export async function searchKnowledge(
 
     return results.results.map((knowledge, index) => ({
       knowledge,
-      score: (knowledge as any).score || 0,
+      score: 1 - (index * 0.1), // 簡易スコアリング
       rank: index + 1,
     }));
   } catch (error) {
-    console.error('Knowledge search error:', error);
-    return [];
-  }
-}
-
-/**
- * 疾病コードで検索
- */
-export async function searchByDiseaseCode(
-  env: Env,
-  diseaseCode: string
-): Promise<Knowledge | null> {
-  try {
-    const stmt = env.DB.prepare(
-      'SELECT * FROM knowledge WHERE disease_code = ? LIMIT 1'
-    );
-    const result = await stmt.bind(diseaseCode).first<Knowledge>();
-    return result;
-  } catch (error) {
-    console.error('Disease code search error:', error);
-    return null;
-  }
-}
-
-/**
- * 疾病名で複数のコードを検索
- */
-export async function searchDiseaseCodesByName(
-  env: Env,
-  diseaseName: string
-): Promise<string[]> {
-  try {
-    const stmt = env.DB.prepare(
-      'SELECT disease_code FROM knowledge WHERE disease_name = ?'
-    );
-    const results = await stmt.bind(diseaseName).all<{ disease_code: string }>();
-    
-    if (!results.results) {
-      return [];
-    }
-
-    return results.results.map((row) => row.disease_code);
-  } catch (error) {
-    console.error('Disease codes search error:', error);
+    console.error('Text search error:', error);
     return [];
   }
 }

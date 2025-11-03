@@ -21,7 +21,6 @@ id = "795ed7ef7b1548629322d2a8c95b62bc"
 
 # 環境変数
 [vars]
-OPENAI_API_KEY = "" # 本番環境ではシークレット化
 ENVIRONMENT = "development"
 
 # 本番環境用の設定

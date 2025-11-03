@@ -1,0 +1,19 @@
+{
+  "name": "sirusiru-radish",
+  "version": "2.0.0",
+  "description": "SIRUSIRU Radish - Insurance Underwriting AI System",
+  "type": "module",
+  "scripts": {
+    "import:csv": "node scripts/import-csv-knowledge.js",
+    "db:init": "cd workers && npm run db:migrate:v2 && npm run db:seed:master",
+    "dev": "cd workers && npm run dev",
+    "deploy": "cd workers && npm run deploy"
+  },
+  "dependencies": {
+    "csv-parse": "^5.6.0",
+    "openai": "^4.76.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1"
+  }
+}

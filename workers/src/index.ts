@@ -1,18 +1,24 @@
 /**
  * SIRUSIRU Radish AI Engine - Main Workers Entry Point
- * Dify-free implementation with OpenAI GPT-4o-mini
+ * Dify-free implementation with OpenAI GPT-4o-mini + Vector Search
  */
 
-import type { Env, ChatRequest, ChatResponse, Source } from './types';
+import type { Env, ChatRequest, ChatResponse, Source, ResponseOption } from './types';
 import {
-  searchKnowledge,
-  searchDiseaseCodesByName,
+  searchKnowledgeByVector,
+  searchKnowledgeByText,
   saveConversation,
   generateConversationId,
   calculateConfidence,
   createErrorResponse,
   createSuccessResponse,
 } from './utils/database';
+import { 
+  getOrCreateConversation, 
+  updateConversationState, 
+  getCollectedData,
+  determineNextState 
+} from './utils/conversation';
 import {
   classifyInput,
   generateDiseaseCandidates,
@@ -74,18 +80,22 @@ export default {
         return response;
       }
 
-      // Knowledge management endpoints (future implementation)
-      if (url.pathname.startsWith('/api/knowledge')) {
-        return new Response(
-          JSON.stringify({ error: 'Knowledge API not implemented yet', code: 'NOT_IMPLEMENTED' }),
-          {
-            status: 501,
-            headers: {
-              'Content-Type': 'application/json',
-              ...corsHeaders,
-            },
-          }
-        );
+      // Django JWT Token endpoint (proxy)
+      if (url.pathname === '/api/token/' && request.method === 'POST') {
+        const response = await handleDjangoTokenProxy(request, env);
+        Object.entries(corsHeaders).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+        return response;
+      }
+
+      // Django JWT Token Refresh endpoint (proxy)
+      if (url.pathname === '/api/token/refresh/' && request.method === 'POST') {
+        const response = await handleDjangoTokenRefreshProxy(request, env);
+        Object.entries(corsHeaders).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+        return response;
       }
 
       return new Response(
@@ -115,50 +125,64 @@ export default {
 };
 
 /**
- * チャットリクエストを処理
+ * チャットリクエストを処理(状態ベース)
  */
 async function handleChatRequest(request: Request, env: Env): Promise<Response> {
   try {
     // リクエストボディを解析
     const body = await request.json<ChatRequest>();
-    const { query, conversation_id, user_id } = body;
+    const { message, query, conversation_id, user_id, selection } = body;
+    
+    // messageまたはqueryを使用（messageを優先）
+    const userInput = message || query;
 
-    // 初回メッセージ（会話ID未設定 & クエリなし）の場合、AI側から質問
-    if (!conversation_id && (!query || query.trim().length === 0)) {
-      const newConvId = generateConversationId();
-      const welcomeMessage = 
-        'お電話ありがとうございます。保険加入のご相談ですね。\n' +
-        '何か気になる症状や、既往症がございますか？\n' +
-        '具体的な症状（例：胃が痛い）や病名（例：胃炎）をお聞かせください。';
-
-      return createSuccessResponse({
-        answer: welcomeMessage,
-        conversation_id: newConvId,
-        type: 'GREETING',
-        sources: [],
-        suggestions: [],
-      });
-    }
-
-    if (!query || query.trim().length === 0) {
-      return createErrorResponse('Query is required', 'BAD_REQUEST');
-    }
-
-    // 会話IDを生成または使用
+    // 会話IDを生成または取得
     const convId = conversation_id || generateConversationId();
+    const conversation = await getOrCreateConversation(env, convId, user_id || null);
+    const collectedData = getCollectedData(conversation);
 
-    // ステップ1: ユーザー入力を分類（疾病名 or 症状）
-    const classification = await classifyInput(env, query);
+    // 状態に応じて処理を分岐
+    switch (conversation.state) {
+      case 'INITIAL':
+        return await handleInitialState(env, convId, user_id || null);
 
-    if (classification.type === 'SYMPTOM') {
-      // 症状入力の場合: 疾病候補を3つ提示
-      return await handleSymptomInput(env, query, convId, user_id || null);
-    } else if (classification.type === 'DISEASE') {
-      // 疾病名入力の場合: 引受判定を実施
-      return await handleDiseaseInput(env, query, convId, user_id || null);
-    } else {
-      // その他: エラー処理
-      return await handleOtherInput(env, query, convId, user_id || null);
+      case 'TREATMENT_CHECK':
+        return await handleTreatmentCheck(env, convId, selection, userInput);
+
+      case 'DIAGNOSIS_INPUT':
+        return await handleDiagnosisInputState(env, convId, userInput, collectedData);
+
+      case 'SYMPTOM_INPUT':
+        return await handleSymptomInputState(env, convId, userInput, collectedData);
+
+      case 'SYMPTOM_FOLLOWUP':
+        return await handleSymptomFollowup(env, convId, userInput, collectedData);
+
+      case 'RESULT':
+        // 「最終確認へ進む」選択を受け取った場合、FINAL_CONFIRMATIONへ遷移
+        if (body.selection === 'proceed') {
+          await updateConversationState(env, convId, 'FINAL_CONFIRMATION', {});
+          return await handleFinalConfirmation(env, convId, body);
+        }
+        // 初回RESULT表示
+        return await handleResultStateNew(env, convId, collectedData);
+
+      case 'FINAL_CONFIRMATION':
+        return await handleFinalConfirmation(env, convId, body);
+
+      case 'COMPLETED':
+        return createSuccessResponse({
+          answer: 'この問い合わせは完了しました。新しい問い合わせを開始してください。',
+          conversation_id: convId,
+          state: 'COMPLETED',
+          disease_detected: null,
+          confidence_score: 0,
+          sources: [],
+          type: 'error',
+        });
+
+      default:
+        return createErrorResponse('Invalid conversation state', 'BAD_REQUEST');
     }
   } catch (error) {
     console.error('Chat request error:', error);
@@ -191,6 +215,13 @@ async function handleSymptomInput(
       sources: [],
       type: 'symptom',
       suggestions: symptomResponse.candidates.map((c) => c.disease_name),
+      options: [
+        {
+          value: 'proceed',
+          label: '最終確認へ進む',
+        },
+      ],
+      requires_input: 'selection',
     };
 
     // 会話履歴を保存
@@ -222,118 +253,163 @@ async function handleDiseaseInput(
   userId: string | null
 ): Promise<Response> {
   try {
-    // ステップ1: ナレッジベースで疾病を検索
-    const searchResults = await searchKnowledge(env, diseaseName, 10);
+    // ステップ1: ベクトル検索でナレッジベースを検索
+    const searchResults = await searchKnowledgeByVector(env, diseaseName, 1, 5);
 
     if (searchResults.length === 0) {
-      // 該当なしの場合
-      const noResultMessage = `申し訳ございません。「${diseaseName}」に関する情報が見つかりませんでした。\n\n病名を正確にご入力いただくか、症状からお伝えいただくこともできます。`;
+      // フォールバック: FTS5検索を試行
+      const fallbackResults = await searchKnowledgeByText(env, diseaseName, 1, 5);
+      
+      if (fallbackResults.length === 0) {
+        // それでも該当なしの場合
+        const noResultMessage = `申し訳ございません。「${diseaseName}」に関する情報が見つかりませんでした。\n\n病名を正確にご入力いただくか、症状からお伝えいただくこともできます。`;
 
-      const response: ChatResponse = {
-        answer: noResultMessage,
-        conversation_id: conversationId,
-        disease_detected: diseaseName,
-        confidence_score: 0.0,
-        sources: [],
-        type: 'error',
-      };
+        const response: ChatResponse = {
+          answer: noResultMessage,
+          conversation_id: conversationId,
+          disease_detected: diseaseName,
+          confidence_score: 0.0,
+          sources: [],
+          type: 'error',
+        };
 
-      await saveConversation(
+        await saveConversation(
+          env,
+          conversationId,
+          userId,
+          diseaseName,
+          noResultMessage,
+          diseaseName,
+          0.0,
+          JSON.stringify([])
+        );
+
+        return createSuccessResponse(response);
+      }
+      
+      // FTS5検索結果からコンテキストを作成
+      const knowledgeContext = fallbackResults
+        .map((result) => result.knowledge.chunk_text)
+        .join('\n\n');
+        
+      return await generateAndSaveResponse(
         env,
+        diseaseName,
+        knowledgeContext,
+        fallbackResults,
         conversationId,
-        userId,
-        diseaseName,
-        noResultMessage,
-        diseaseName,
-        0.0,
-        JSON.stringify([])
+        userId
       );
-
-      return createSuccessResponse(response);
     }
 
-    // ステップ2: 検索結果をコンテキストとして整形
+    // ステップ2: ベクトル検索結果をコンテキストとして整形
     const knowledgeContext = searchResults
-      .map((result) => result.knowledge.content_full)
+      .map((result) => result.knowledge.chunk_text)
       .join('\n\n');
 
-    // ステップ3: OpenAI APIで引受判定回答を生成
-    const aiResponse = await generateUnderwritingResponse(env, diseaseName, knowledgeContext);
+    return await generateAndSaveResponse(
+      env,
+      diseaseName,
+      knowledgeContext,
+      searchResults,
+      conversationId,
+      userId
+    );
+  } catch (error) {
+    console.error('Disease handling error:', error);
+    return createErrorResponse('Failed to process disease query', 'PROCESSING_ERROR');
+  }
+}
 
-    // ステップ4: 回答の妥当性を検証
-    const isValid = validateResponse(aiResponse, searchResults.length > 0);
+/**
+ * AI回答を生成して保存
+ */
+async function generateAndSaveResponse(
+  env: Env,
+  diseaseName: string,
+  knowledgeContext: string,
+  searchResults: any[],
+  conversationId: string,
+  userId: string | null
+): Promise<Response> {
+  // ステップ3: OpenAI APIで引受判定回答を生成
+  const aiResponse = await generateUnderwritingResponse(env, diseaseName, knowledgeContext);
 
-    if (!isValid) {
-      console.warn('Response validation failed, using fallback');
-      // フォールバック: ナレッジベースの情報を直接表示
-      const fallbackResponse = formatKnowledgeDirectly(searchResults);
-      
-      const response: ChatResponse = {
-        answer: fallbackResponse,
-        conversation_id: conversationId,
-        disease_detected: diseaseName,
-        confidence_score: calculateConfidence(searchResults[0].score),
-        sources: searchResults.slice(0, 3).map(
-          (r): Source => ({
-            disease_code: r.knowledge.disease_code,
-            disease_name: r.knowledge.disease_name,
-            condition: r.knowledge.condition,
-            score: r.score,
-          })
-        ),
-        type: 'disease',
-      };
+  // ステップ4: 回答の妥当性を検証
+  const isValid = validateResponse(aiResponse, searchResults.length > 0);
 
-      await saveConversation(
-        env,
-        conversationId,
-        userId,
-        diseaseName,
-        fallbackResponse,
-        diseaseName,
-        response.confidence_score,
-        JSON.stringify(response.sources)
-      );
-
-      return createSuccessResponse(response);
-    }
-
-    // ステップ5: 成功レスポンスを返す
-    const confidence = calculateConfidence(searchResults[0].score);
-
+  if (!isValid) {
+    console.warn('Response validation failed, using fallback');
+    // フォールバック: ナレッジベースの情報を直接表示
+    const fallbackResponse = formatKnowledgeDirectly(searchResults);
+    
     const response: ChatResponse = {
-      answer: aiResponse,
+      answer: fallbackResponse,
       conversation_id: conversationId,
       disease_detected: diseaseName,
-      confidence_score: confidence,
+      confidence_score: searchResults[0].score,
       sources: searchResults.slice(0, 3).map(
         (r): Source => ({
-          disease_code: r.knowledge.disease_code,
-          disease_name: r.knowledge.disease_name,
-          condition: r.knowledge.condition,
+          source_file: r.knowledge.source_file,
+          chunk_text: r.knowledge.chunk_text.substring(0, 100) + '...',
           score: r.score,
         })
       ),
       type: 'disease',
     };
 
-    // 会話履歴を保存
     await saveConversation(
       env,
       conversationId,
       userId,
       diseaseName,
-      aiResponse,
+      fallbackResponse,
       diseaseName,
-      confidence,
+      response.confidence_score,
       JSON.stringify(response.sources)
     );
 
     return createSuccessResponse(response);
-  } catch (error) {
-    console.error('Disease handling error:', error);
-    return createErrorResponse('Failed to process disease query', 'PROCESSING_ERROR');
   }
+
+  // ステップ5: 成功レスポンスを返す
+  const confidence = searchResults[0].score;
+
+  const response: ChatResponse = {
+    answer: aiResponse,
+    conversation_id: conversationId,
+    disease_detected: diseaseName,
+    confidence_score: confidence,
+    sources: searchResults.slice(0, 3).map(
+      (r): Source => ({
+        source_file: r.knowledge.source_file,
+        chunk_text: r.knowledge.chunk_text.substring(0, 100) + '...',
+        score: r.score,
+      })
+    ),
+    type: 'disease',
+    options: [
+      {
+        value: 'proceed',
+        label: '最終確認へ進む',
+      },
+    ],
+    requires_input: 'selection',
+  };
+
+  // 会話履歴を保存
+  await saveConversation(
+    env,
+    conversationId,
+    userId,
+    diseaseName,
+    aiResponse,
+    diseaseName,
+    confidence,
+    JSON.stringify(response.sources)
+  );
+
+  return createSuccessResponse(response);
 }
 
 /**
@@ -376,16 +452,495 @@ async function handleOtherInput(
 function formatKnowledgeDirectly(searchResults: any[]): string {
   const topResult = searchResults[0].knowledge;
 
-  return `お問い合わせいただいた内容について、以下のとおり判定されました。
+  return `お問い合わせいただいた内容について、以下の情報が見つかりました。
 
-病名： ${topResult.disease_name}
-状態： ${topResult.condition || '（記載なし）'}
-主契約： ${topResult.main_contract || '（記載なし）'}
-医療特約： ${topResult.medical_rider || '（記載なし）'}
-がん特約： ${topResult.cancer_rider || '（記載なし）'}
-収入保障特約： ${topResult.income_rider || '（記載なし）'}
-備考： ${topResult.remarks || '（記載なし）'}
+【検索結果】
+${topResult.chunk_text}
 
-※この判定は、ご提供いただいた情報に基づく暫定的なものです。
-※正式な審査には、詳細な医療情報の提出が必要となります。`;
+※この情報は、ご提供いただいた病名に基づく暫定的なものです。
+※正式な審査には、詳細な医療情報の提出が必要となります。
+
+出典: ${topResult.source_file}
+類似度スコア: ${(searchResults[0].score * 100).toFixed(1)}%`;
 }
+
+// ========================================
+// 新しい状態ベースハンドラー関数
+// ========================================
+
+/**
+ * INITIAL状態: 初回挨拶と5年以内の治療確認
+ */
+async function handleInitialState(
+  env: Env,
+  conversationId: string,
+  userId: string | null
+): Promise<Response> {
+  const welcomeMessage = 
+    'お電話ありがとうございます。保険加入のご相談を承ります。\n\n' +
+    'まず確認させていただきたいのですが、' +
+    '**5年以内に治療中、または経過観察中の病気はございますか？**';
+
+  const options: ResponseOption[] = [
+    {
+      value: 'yes_with_diagnosis',
+      label: 'はい（診断名を知っている）',
+      description: '病名がわかる場合はこちら',
+    },
+    {
+      value: 'yes_without_diagnosis',
+      label: 'はい（診断名はわからないが症状がある）',
+      description: '症状のみわかる場合はこちら',
+    },
+    {
+      value: 'no',
+      label: 'いいえ',
+      description: '治療や経過観察中の病気はない',
+    },
+  ];
+
+  // 状態を更新
+  await updateConversationState(
+    env,
+    conversationId,
+    'TREATMENT_CHECK',
+    {},
+    { role: 'assistant', content: welcomeMessage }
+  );
+
+  return createSuccessResponse({
+    answer: welcomeMessage,
+    conversation_id: conversationId,
+    state: 'TREATMENT_CHECK',
+    disease_detected: null,
+    confidence_score: 0,
+    sources: [],
+    type: 'question',
+    options,
+    requires_input: 'selection',
+  });
+}
+
+/**
+ * TREATMENT_CHECK状態: 治療有無の選択を処理
+ */
+async function handleTreatmentCheck(
+  env: Env,
+  conversationId: string,
+  selection: string | undefined,
+  userInput: string | undefined
+): Promise<Response> {
+  if (!selection && !userInput) {
+    return createErrorResponse('Selection or input is required', 'BAD_REQUEST');
+  }
+
+  // 選択肢を判定
+  let treatmentChoice: 'yes_with_diagnosis' | 'yes_without_diagnosis' | 'no';
+  
+  if (selection) {
+    treatmentChoice = selection as any;
+  } else if (userInput) {
+    // テキスト入力から推測
+    const lower = userInput.toLowerCase();
+    if (lower.includes('はい') || lower.includes('ある') || lower.includes('yes')) {
+      if (lower.includes('病名') || lower.includes('診断')) {
+        treatmentChoice = 'yes_with_diagnosis';
+      } else {
+        treatmentChoice = 'yes_without_diagnosis';
+      }
+    } else {
+      treatmentChoice = 'no';
+    }
+  } else {
+    return createErrorResponse('Invalid selection', 'BAD_REQUEST');
+  }
+
+  // データを保存して次の状態へ
+  await updateConversationState(
+    env,
+    conversationId,
+    'TREATMENT_CHECK',
+    { hasTreatment: treatmentChoice },
+    { role: 'user', content: userInput || selection || '' }
+  );
+
+  const conversation = await getOrCreateConversation(env, conversationId, null);
+  const collectedData = getCollectedData(conversation);
+  const nextState = determineNextState('TREATMENT_CHECK', collectedData);
+
+  // 次の状態に応じてレスポンス
+  if (nextState === 'DIAGNOSIS_INPUT') {
+    await updateConversationState(env, conversationId, nextState, {});
+    return createSuccessResponse({
+      answer: 'かしこまりました。\n\n**診断名（病名）を教えてください。**\n\n例: 胃炎、糖尿病、高血圧など',
+      conversation_id: conversationId,
+      state: nextState,
+      disease_detected: null,
+      confidence_score: 0,
+      sources: [],
+      type: 'question',
+      requires_input: 'text',
+    });
+  } else if (nextState === 'SYMPTOM_INPUT') {
+    await updateConversationState(env, conversationId, nextState, {});
+    return createSuccessResponse({
+      answer: 'かしこまりました。\n\n**どのような症状がございますか？**\n\n例: 胃が痛い、頭痛がする、めまいがするなど',
+      conversation_id: conversationId,
+      state: nextState,
+      disease_detected: null,
+      confidence_score: 0,
+      sources: [],
+      type: 'question',
+      requires_input: 'text',
+    });
+  } else if (nextState === 'RESULT') {
+    await updateConversationState(env, conversationId, nextState, {});
+    return await handleResultStateNew(env, conversationId, collectedData);
+  }
+
+  return createErrorResponse('Invalid state transition', 'INTERNAL_ERROR');
+}
+
+/**
+ * DIAGNOSIS_INPUT状態: 診断名入力を処理
+ */
+async function handleDiagnosisInputState(
+  env: Env,
+  conversationId: string,
+  userInput: string | undefined,
+  collectedData: any
+): Promise<Response> {
+  if (!userInput || userInput.trim().length === 0) {
+    return createErrorResponse('診断名を入力してください', 'BAD_REQUEST');
+  }
+
+  // 診断名を保存
+  await updateConversationState(
+    env,
+    conversationId,
+    'DIAGNOSIS_INPUT',
+    { diagnosisName: userInput },
+    { role: 'user', content: userInput }
+  );
+
+  // 結果状態へ遷移
+  const updatedData = { ...collectedData, diagnosisName: userInput };
+  const nextState = determineNextState('DIAGNOSIS_INPUT', updatedData);
+  await updateConversationState(env, conversationId, nextState, {});
+
+  return await handleResultStateNew(env, conversationId, updatedData);
+}
+
+/**
+ * SYMPTOM_INPUT状態: 症状入力を処理
+ */
+async function handleSymptomInputState(
+  env: Env,
+  conversationId: string,
+  userInput: string | undefined,
+  collectedData: any
+): Promise<Response> {
+  if (!userInput || userInput.trim().length === 0) {
+    return createErrorResponse('症状を入力してください', 'BAD_REQUEST');
+  }
+
+  // 症状を保存
+  const symptoms = collectedData.symptoms || [];
+  symptoms.push(userInput);
+
+  await updateConversationState(
+    env,
+    conversationId,
+    'SYMPTOM_INPUT',
+    { symptoms },
+    { role: 'user', content: userInput }
+  );
+
+  const updatedData = { ...collectedData, symptoms };
+  const nextState = determineNextState('SYMPTOM_INPUT', updatedData);
+
+  if (nextState === 'SYMPTOM_FOLLOWUP') {
+    await updateConversationState(env, conversationId, nextState, {});
+    return createSuccessResponse({
+      answer: 'ありがとうございます。\n\n**他に気になる症状はございますか？**\n\nあれば教えてください。なければ「なし」と入力してください。',
+      conversation_id: conversationId,
+      state: nextState,
+      disease_detected: null,
+      confidence_score: 0,
+      sources: [],
+      type: 'question',
+      requires_input: 'text',
+    });
+  } else {
+    await updateConversationState(env, conversationId, nextState, {});
+    return await handleResultStateNew(env, conversationId, updatedData);
+  }
+}
+
+/**
+ * SYMPTOM_FOLLOWUP状態: 追加症状入力を処理
+ */
+async function handleSymptomFollowup(
+  env: Env,
+  conversationId: string,
+  userInput: string | undefined,
+  collectedData: any
+): Promise<Response> {
+  if (!userInput || userInput.trim().length === 0) {
+    return createErrorResponse('入力してください', 'BAD_REQUEST');
+  }
+
+  // 「なし」でなければ症状を追加
+  if (!userInput.includes('なし') && !userInput.toLowerCase().includes('no')) {
+    const symptoms = collectedData.symptoms || [];
+    symptoms.push(userInput);
+    await updateConversationState(
+      env,
+      conversationId,
+      'SYMPTOM_FOLLOWUP',
+      { symptoms },
+      { role: 'user', content: userInput }
+    );
+    collectedData.symptoms = symptoms;
+  }
+
+  // 結果状態へ遷移
+  const nextState = determineNextState('SYMPTOM_FOLLOWUP', collectedData);
+  await updateConversationState(env, conversationId, nextState, {});
+
+  return await handleResultStateNew(env, conversationId, collectedData);
+}
+
+/**
+ * RESULT状態: 判定結果を表示(新実装)
+ */
+async function handleResultStateNew(
+  env: Env,
+  conversationId: string,
+  collectedData: any
+): Promise<Response> {
+  // 治療なしの場合
+  if (collectedData.hasTreatment === 'no') {
+    const answer = 
+      '**すべての保険商品にご加入いただけます！**\n\n' +
+      '【ご加入可能な保険会社】\n' +
+      '・なないろ生命（全商品）\n' +
+      '・はなさく生命（全商品）\n' +
+      '・ネオファースト生命（全商品）\n\n' +
+      '詳しい商品内容や保険料については、担当者よりご案内いたします。';
+
+    return createSuccessResponse({
+      answer,
+      conversation_id: conversationId,
+      state: 'RESULT',
+      disease_detected: null,
+      confidence_score: 1.0,
+      sources: [],
+      type: 'result',
+      options: [
+        {
+          value: 'proceed',
+          label: '最終確認へ進む',
+        },
+      ],
+      requires_input: 'selection',
+    });
+  }
+
+  // 診断名がある場合: ベクトル検索
+  if (collectedData.diagnosisName) {
+    return await handleDiseaseInput(env, collectedData.diagnosisName, conversationId, null);
+  }
+
+  // 症状のみの場合: 疾病推定
+  if (collectedData.symptoms && collectedData.symptoms.length > 0) {
+    const symptomText = collectedData.symptoms.join('、');
+    return await handleSymptomInput(env, symptomText, conversationId, null);
+  }
+
+  return createErrorResponse('Insufficient data for result', 'BAD_REQUEST');
+}
+
+/**
+ * FINAL_CONFIRMATION状態: 最終ヒアリング
+ */
+async function handleFinalConfirmation(
+  env: Env,
+  conversationId: string,
+  body: any
+): Promise<Response> {
+  // フォームデータを取得
+  const formData = body.form_data;
+
+  // フォームデータが未入力の場合、フォーム表示
+  if (!formData || !formData.name || !formData.gender || !formData.age) {
+    return createSuccessResponse({
+      answer: '最後に、お客様情報を入力してください。',
+      conversation_id: conversationId,
+      state: 'FINAL_CONFIRMATION',
+      disease_detected: null,
+      confidence_score: 0,
+      sources: [],
+      type: 'form',
+      requires_input: 'form',
+      form_fields: [
+        {
+          name: 'name',
+          label: 'お名前',
+          type: 'text',
+          required: true,
+          placeholder: '例: 山田太郎',
+        },
+        {
+          name: 'gender',
+          label: '性別',
+          type: 'select',
+          required: true,
+          options: [
+            { value: 'male', label: '男性' },
+            { value: 'female', label: '女性' },
+            { value: 'other', label: 'その他' },
+          ],
+        },
+        {
+          name: 'age',
+          label: '年齢',
+          type: 'number',
+          required: true,
+          placeholder: '例: 35',
+        },
+      ],
+    });
+  }
+
+  // バリデーション
+  if (formData.age < 0 || formData.age > 120) {
+    return createSuccessResponse({
+      answer: '年齢が正しくありません。0〜120の範囲で入力してください。',
+      conversation_id: conversationId,
+      state: 'FINAL_CONFIRMATION',
+      disease_detected: null,
+      confidence_score: 0,
+      sources: [],
+      type: 'error',
+      requires_input: 'form',
+    });
+  }
+
+  // データを保存してCOMPLETED状態に遷移
+  await updateConversationState(
+    env,
+    conversationId,
+    'COMPLETED',
+    { 
+      name: formData.name, 
+      gender: formData.gender, 
+      age: formData.age 
+    },
+    { 
+      role: 'user', 
+      content: `お名前: ${formData.name}, 性別: ${formData.gender}, 年齢: ${formData.age}歳` 
+    }
+  );
+
+  return createSuccessResponse({
+    answer: `✅ **ヒアリング完了**\n\nお名前: ${formData.name}\n性別: ${formData.gender === 'male' ? '男性' : formData.gender === 'female' ? '女性' : 'その他'}\n年齢: ${formData.age}歳\n\n情報を保存しました。次のお問い合わせ対応をお願いします。`,
+    conversation_id: conversationId,
+    state: 'COMPLETED',
+    disease_detected: null,
+    confidence_score: 0,
+    sources: [],
+    type: 'confirmation',
+  });
+}
+
+// ===================================
+// Authentication Handlers
+// ===================================
+
+/**
+ * Django JWT Token endpoint proxy
+ * Django APIの/api/token/エンドポイントへのプロキシ
+ */
+async function handleDjangoTokenProxy(request: Request, env: Env): Promise<Response> {
+  try {
+    const djangoApiUrl = 'https://tenant-system.noce-creative.com/api/token/';
+    
+    // リクエストボディを取得
+    const body = await request.text();
+    
+    // Django APIにプロキシ
+    const djangoResponse = await fetch(djangoApiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: body,
+    });
+    
+    // レスポンスをそのまま返す
+    const responseBody = await djangoResponse.text();
+    
+    return new Response(responseBody, {
+      status: djangoResponse.status,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  } catch (error) {
+    console.error('Django token proxy error:', error);
+    return new Response(
+      JSON.stringify({
+        error: '認証サーバーへの接続中にエラーが発生しました',
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
+}
+
+/**
+ * Django JWT Token Refresh endpoint proxy
+ * Django APIの/api/token/refresh/エンドポイントへのプロキシ
+ */
+async function handleDjangoTokenRefreshProxy(request: Request, env: Env): Promise<Response> {
+  try {
+    const djangoApiUrl = 'https://tenant-system.noce-creative.com/api/token/refresh/';
+    
+    // リクエストボディを取得
+    const body = await request.text();
+    
+    // Django APIにプロキシ
+    const djangoResponse = await fetch(djangoApiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: body,
+    });
+    
+    // レスポンスをそのまま返す
+    const responseBody = await djangoResponse.text();
+    
+    return new Response(responseBody, {
+      status: djangoResponse.status,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  } catch (error) {
+    console.error('Django token refresh proxy error:', error);
+    return new Response(
+      JSON.stringify({
+        error: 'トークン更新サーバーへの接続中にエラーが発生しました',
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
+}
+

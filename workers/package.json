@@ -9,7 +9,10 @@
     "deploy:production": "wrangler deploy --env production",
     "db:create": "wrangler d1 create radish-knowledge",
     "db:migrate": "wrangler d1 execute radish-knowledge --file=../database/schema.sql",
+    "db:migrate:v2": "wrangler d1 execute radish-knowledge --file=../database/schema-v2.sql",
     "db:seed": "wrangler d1 execute radish-knowledge --file=../database/seed.sql",
+    "db:seed:master": "wrangler d1 execute radish-knowledge --file=../database/seed-master.sql",
+    "db:seed:vectors": "wrangler d1 execute radish-knowledge --file=../database/seed-vectors.sql",
     "kv:create": "wrangler kv:namespace create CACHE",
     "test": "vitest",
     "type-check": "tsc --noEmit"
