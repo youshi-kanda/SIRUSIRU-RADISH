@@ -41,22 +41,24 @@ export interface KnowledgeSearchResult {
 // Conversation State Management
 // ===================================
 export type ConversationState = 
-  | 'INITIAL'              // 初回: 5年以内の治療・経過観察確認
-  | 'TREATMENT_CHECK'      // 治療確認後の分岐待ち
-  | 'DIAGNOSIS_INPUT'      // 診断名入力待ち
-  | 'SYMPTOM_INPUT'        // 症状入力待ち(複数ターン可)
-  | 'SYMPTOM_FOLLOWUP'     // 症状追加質問
-  | 'RESULT'               // 判定結果表示
-  | 'FINAL_CONFIRMATION'   // 最終ヒアリング
-  | 'COMPLETED';           // 完了
+  | 'INITIAL'                    // 初回: 5年以内の治療・経過観察確認
+  | 'TREATMENT_CHECK'            // 治療確認後の分岐待ち
+  | 'DIAGNOSIS_KNOWLEDGE_CHECK'  // 診断名を知っているか確認
+  | 'DIAGNOSIS_INPUT'            // 診断名入力待ち
+  | 'SYMPTOM_INPUT'              // 症状入力待ち(複数ターン可)
+  | 'SYMPTOM_FOLLOWUP'           // 症状追加質問
+  | 'RESULT'                     // 判定結果表示
+  | 'FINAL_CONFIRMATION'         // 最終ヒアリング
+  | 'COMPLETED';                 // 完了
 
 export interface CollectedData {
-  hasTreatment?: 'yes_with_diagnosis' | 'yes_without_diagnosis' | 'no'; // 治療有無
-  diagnosisName?: string;  // 診断名
-  symptoms?: string[];     // 症状リスト
-  name?: string;           // 顧客名
+  hasTreatment?: 'yes' | 'no';   // 治療有無
+  knowsDiagnosis?: boolean;      // 診断名を知っているか
+  diagnosisName?: string;        // 診断名
+  symptoms?: string[];           // 症状リスト
+  name?: string;                 // 顧客名
   gender?: 'male' | 'female' | 'other'; // 性別
-  age?: number;            // 年齢
+  age?: number;                  // 年齢
 }
 
 export interface Conversation {

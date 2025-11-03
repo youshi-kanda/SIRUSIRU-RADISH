@@ -241,12 +241,13 @@ body.sidebar-open .chat-main { left: 240px; }
 /* 選択ボタンコンテナ */
 .selection-buttons {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 10px;
   margin: 15px 0;
   padding: 0 15px;
   max-width: 80%;
   align-self: flex-start;
+  flex-wrap: wrap;
 }
 
 /* 選択ボタン */
@@ -255,12 +256,14 @@ body.sidebar-open .chat-main { left: 240px; }
   color: #FFFFFF;
   border: none;
   border-radius: 20px;
-  padding: 12px 20px;
+  padding: 12px 24px;
   font-size: 1em;
   cursor: pointer;
   transition: all 0.3s ease;
-  text-align: left;
+  text-align: center;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  flex: 0 1 auto;
+  min-width: 100px;
 }
 
 .selection-button:hover:not(:disabled) {

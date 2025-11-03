@@ -125,14 +125,20 @@ export function determineNextState(
       return 'TREATMENT_CHECK';
 
     case 'TREATMENT_CHECK':
-      if (data.hasTreatment === 'yes_with_diagnosis') {
-        return 'DIAGNOSIS_INPUT';
-      } else if (data.hasTreatment === 'yes_without_diagnosis') {
-        return 'SYMPTOM_INPUT';
+      if (data.hasTreatment === 'yes') {
+        return 'DIAGNOSIS_KNOWLEDGE_CHECK';
       } else if (data.hasTreatment === 'no') {
         return 'RESULT';
       }
       return 'TREATMENT_CHECK';
+
+    case 'DIAGNOSIS_KNOWLEDGE_CHECK':
+      if (data.knowsDiagnosis === true) {
+        return 'DIAGNOSIS_INPUT';
+      } else if (data.knowsDiagnosis === false) {
+        return 'SYMPTOM_INPUT';
+      }
+      return 'DIAGNOSIS_KNOWLEDGE_CHECK';
 
     case 'DIAGNOSIS_INPUT':
       return 'RESULT';

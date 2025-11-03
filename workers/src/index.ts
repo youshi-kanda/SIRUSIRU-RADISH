@@ -167,6 +167,9 @@ async function handleChatRequest(request: Request, env: Env): Promise<Response> 
       case 'TREATMENT_CHECK':
         return await handleTreatmentCheck(env, convId, selection, userInput);
 
+      case 'DIAGNOSIS_KNOWLEDGE_CHECK':
+        return await handleDiagnosisKnowledgeCheck(env, convId, selection, userInput);
+
       case 'DIAGNOSIS_INPUT':
         return await handleDiagnosisInputState(env, convId, userInput, collectedData);
 
@@ -501,19 +504,12 @@ async function handleInitialState(
 
   const options: ResponseOption[] = [
     {
-      value: 'yes_with_diagnosis',
-      label: 'はい（診断名を知っている）',
-      description: '病名がわかる場合はこちら',
-    },
-    {
-      value: 'yes_without_diagnosis',
-      label: 'はい（診断名はわからないが症状がある）',
-      description: '症状のみわかる場合はこちら',
+      value: 'yes',
+      label: 'はい',
     },
     {
       value: 'no',
       label: 'いいえ',
-      description: '治療や経過観察中の病気はない',
     },
   ];
 
@@ -553,19 +549,15 @@ async function handleTreatmentCheck(
   }
 
   // 選択肢を判定
-  let treatmentChoice: 'yes_with_diagnosis' | 'yes_without_diagnosis' | 'no';
+  let treatmentChoice: 'yes' | 'no';
   
   if (selection) {
-    treatmentChoice = selection as any;
+    treatmentChoice = selection as 'yes' | 'no';
   } else if (userInput) {
     // テキスト入力から推測
     const lower = userInput.toLowerCase();
     if (lower.includes('はい') || lower.includes('ある') || lower.includes('yes')) {
-      if (lower.includes('病名') || lower.includes('診断')) {
-        treatmentChoice = 'yes_with_diagnosis';
-      } else {
-        treatmentChoice = 'yes_without_diagnosis';
-      }
+      treatmentChoice = 'yes';
     } else {
       treatmentChoice = 'no';
     }
@@ -585,6 +577,73 @@ async function handleTreatmentCheck(
   const conversation = await getOrCreateConversation(env, conversationId, null);
   const collectedData = getCollectedData(conversation);
   const nextState = determineNextState('TREATMENT_CHECK', collectedData);
+
+  // 次の状態に応じてレスポンス
+  if (nextState === 'DIAGNOSIS_KNOWLEDGE_CHECK') {
+    await updateConversationState(env, conversationId, nextState, {});
+    
+    const options: ResponseOption[] = [
+      { value: 'yes', label: 'はい' },
+      { value: 'no', label: 'いいえ' },
+    ];
+    
+    return createSuccessResponse({
+      answer: '**診断名（病名）をご存知ですか？**',
+      conversation_id: conversationId,
+      state: nextState,
+      disease_detected: null,
+      confidence_score: 0,
+      sources: [],
+      type: 'question',
+      options,
+      requires_input: 'selection',
+    });
+  } else if (nextState === 'RESULT') {
+    await updateConversationState(env, conversationId, nextState, {});
+    return await handleResultStateNew(env, conversationId, collectedData);
+  }
+
+  return createErrorResponse('Invalid state transition', 'INTERNAL_ERROR');
+}
+
+/**
+ * DIAGNOSIS_KNOWLEDGE_CHECK状態: 診断名を知っているか確認
+ */
+async function handleDiagnosisKnowledgeCheck(
+  env: Env,
+  conversationId: string,
+  selection: string | undefined,
+  userInput: string | undefined
+): Promise<Response> {
+  if (!selection && !userInput) {
+    return createErrorResponse('Selection or input is required', 'BAD_REQUEST');
+  }
+
+  // 選択肢を判定
+  let knowsDiagnosis: boolean;
+  
+  if (selection) {
+    knowsDiagnosis = selection === 'yes';
+  } else if (userInput) {
+    // テキスト入力から推測
+    const lower = userInput.toLowerCase();
+    knowsDiagnosis = lower.includes('はい') || lower.includes('知って') || lower.includes('yes');
+  } else {
+    return createErrorResponse('Invalid selection', 'BAD_REQUEST');
+  }
+
+  // データを保存して次の状態へ
+  await updateConversationState(
+    env,
+    conversationId,
+    'DIAGNOSIS_KNOWLEDGE_CHECK',
+    { knowsDiagnosis },
+    { role: 'user', content: userInput || selection || '' }
+  );
+
+  const conversation = await getOrCreateConversation(env, conversationId, null);
+  const collectedData = getCollectedData(conversation);
+  const nextState = determineNextState('DIAGNOSIS_KNOWLEDGE_CHECK', collectedData);
 
   // 次の状態に応じてレスポンス
   if (nextState === 'DIAGNOSIS_INPUT') {
@@ -611,9 +670,6 @@ async function handleTreatmentCheck(
       type: 'question',
       requires_input: 'text',
     });
-  } else if (nextState === 'RESULT') {
-    await updateConversationState(env, conversationId, nextState, {});
-    return await handleResultStateNew(env, conversationId, collectedData);
   }
 
   return createErrorResponse('Invalid state transition', 'INTERNAL_ERROR');
