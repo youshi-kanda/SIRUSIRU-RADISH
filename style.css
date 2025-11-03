@@ -219,12 +219,13 @@ body.sidebar-open .chat-main { left: 240px; }
   flex-direction: column;
 }
 .message {
-  margin-bottom: 15px;
-  padding: 10px 15px;
-  border-radius: 20px;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+  border-radius: 18px;
   max-width: 80%;
   word-wrap: break-word;
   overflow-wrap: break-word;
+  line-height: 1.5;
 }
 .message.user {
   background-color: #CB6847;
@@ -242,13 +243,26 @@ body.sidebar-open .chat-main { left: 240px; }
   word-wrap: break-word;
 }
 
+/* Markdown内の段落の余白を調整 */
+.message.bot p {
+  margin: 0.3em 0;
+}
+
+.message.bot p:first-child {
+  margin-top: 0;
+}
+
+.message.bot p:last-child {
+  margin-bottom: 0;
+}
+
 /* 選択ボタンコンテナ */
 .selection-buttons {
   display: flex;
   flex-direction: row;
-  gap: 10px;
-  margin: 15px 0;
-  padding: 0 15px;
+  gap: 8px;
+  margin: 10px 0 8px 0;
+  padding: 0 12px;
   max-width: 80%;
   align-self: flex-start;
   flex-wrap: wrap;
@@ -259,9 +273,9 @@ body.sidebar-open .chat-main { left: 240px; }
   background-color: #CB6847;
   color: #FFFFFF;
   border: none;
-  border-radius: 20px;
-  padding: 12px 24px;
-  font-size: 1em;
+  border-radius: 18px;
+  padding: 10px 20px;
+  font-size: 0.95em;
   cursor: pointer;
   transition: all 0.3s ease;
   text-align: center;
@@ -383,16 +397,17 @@ body.sidebar-open .chat-main { left: 240px; }
 /* 音声ボタン重ね配置例 */
 .text-to-audio-btn {
   position: absolute;
-  bottom: 8px;
-  right: 8px;
+  bottom: 6px;
+  right: 6px;
   background-color: #555;
   color: #fff;
   border: none;
-  border-radius: 4px;
-  padding: 6px;
+  border-radius: 3px;
+  padding: 4px 6px;
   cursor: pointer;
-  font-size: 0.9em;
-  opacity: 0.8;
+  font-size: 0.85em;
+  opacity: 0.7;
+  transition: opacity 0.2s;
 }
 .text-to-audio-btn:hover {
   opacity: 1;
