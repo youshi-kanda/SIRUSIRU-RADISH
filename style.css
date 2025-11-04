@@ -887,6 +887,18 @@ body.sidebar-open .chat-main { left: 240px; }
   text-align: center;
 }
 
+/* ログインエラーメッセージ */
+.login-error-message {
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+  border-radius: 4px;
+  padding: 10px 15px;
+  margin-bottom: 15px;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
 /* 閉じるボタン */
 .modal-close-button {
   position: absolute;
@@ -934,7 +946,7 @@ body.sidebar-open .chat-main { left: 240px; }
 
 /* ログインボタン */
 .login-submit-btn {
-  background: #CB6847; /* 例: 青緑系 */
+  background: #CB6847;
   color: #fff;
   border: none;
   border-radius: 4px;
@@ -942,9 +954,71 @@ body.sidebar-open .chat-main { left: 240px; }
   padding: 10px 16px;
   cursor: pointer;
   transition: background-color 0.3s;
+  position: relative;
+  min-width: 120px;
 }
-.login-submit-btn:hover {
-  background: #CB6847;
+.login-submit-btn:hover:not(:disabled) {
+  background: #b85a3a;
+}
+.login-submit-btn:disabled {
+  background: #999;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* ================================
+   マイページモーダル
+================================ */
+.mypage-modal-content {
+  max-width: 450px;
+}
+
+.user-info-display {
+  margin: 20px 0;
+}
+
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.info-item:last-child {
+  border-bottom: none;
+}
+
+.info-item label {
+  font-weight: 500;
+  color: #555;
+  font-size: 0.95rem;
+}
+
+.info-item .info-value {
+  color: #333;
+  font-size: 0.95rem;
+  text-align: right;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logout-btn {
+  background: #dc3545;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  padding: 10px 20px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  min-width: 120px;
+}
+
+.logout-btn:hover {
+  background: #c82333;
 }
 
 /* ================================

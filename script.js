@@ -255,7 +255,35 @@ async function workersApiFetch(endpoint, options = {}) {
   // すべてのAPI呼び出しをWorkers経由に統一
   const workersUrl = `${API_BASE}${endpoint}`;
 
-  return fetch(workersUrl, config);
+  try {
+    const response = await fetch(workersUrl, config);
+    
+    // 認証エラー(401)の場合、トークンをクリアしてログイン促進
+    if (response.status === 401) {
+      localStorage.removeItem(TOKEN_KEY);
+      throw new Error('セッションが期限切れです。再度ログインしてください。');
+    }
+    
+    // サーバーエラー(5xx)の場合、わかりやすいメッセージ
+    if (response.status >= 500) {
+      throw new Error('サーバーエラーが発生しました。しばらくしてから再度お試しください。');
+    }
+    
+    return response;
+  } catch (error) {
+    // ネットワークエラー(fetch自体の失敗)
+    if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+      throw new Error('ネットワークエラーが発生しました。インターネット接続を確認してください。');
+    }
+    
+    // タイムアウトエラー
+    if (error.name === 'AbortError') {
+      throw new Error('リクエストがタイムアウトしました。再度お試しください。');
+    }
+    
+    // その他のエラーはそのまま再スロー
+    throw error;
+  }
 }
 
 // ファイル一覧取得（Workers経由でDjango連携）
@@ -1077,7 +1105,25 @@ async function sendMessage(userInput, files = []) {
 
   } catch (err) {
     console.error("Error in sendMessage:", err);
-    addMessage("エラーが発生しました。もう一度お試しください。", "system");
+    
+    // エラーの種類に応じて詳細なメッセージを表示
+    let errorMessage = "エラーが発生しました。";
+    
+    if (err.message) {
+      if (err.message.includes('認証')) {
+        errorMessage = "認証エラー: " + err.message;
+      } else if (err.message.includes('ネットワーク')) {
+        errorMessage = "ネットワークエラー: " + err.message;
+      } else if (err.message.includes('タイムアウト')) {
+        errorMessage = "タイムアウトエラー: " + err.message;
+      } else if (err.message.includes('サーバー')) {
+        errorMessage = "サーバーエラー: " + err.message;
+      } else {
+        errorMessage = err.message;
+      }
+    }
+    
+    addMessage(errorMessage, "system");
   } finally {
     endLoadingState();
     enableUserInput(); // 入力欄を有効化してフォーカスを設定
@@ -3888,22 +3934,61 @@ async function fetchConversationList() {
       return;
     }
     
-    // TODO: 将来的にWorkersに会話一覧エンドポイントを実装
-    displayConversationList([]);
+    // Workers の会話一覧エンドポイントから取得
+    const endpoint = getConfig('ENDPOINTS.CONVERSATION_LIST')(userEmail);
+    console.log(`[Conversation List] Fetching from: ${endpoint}`);
     
-  } catch (err) {
-    // 認証エラーの場合は静かに処理（ログイン促進のため）
-    if (err.message && err.message.includes("No access token")) {
+    const response = await apiFetch(endpoint, {
+      method: "GET",
+      headers: {
+        'X-API-Client': 'sirusiru-chat',
+        'X-Tenant-Domain': getConfig('TENANT_DOMAIN')
+      }
+    });
+    
+    if (!response.ok) {
+      console.error(`[Conversation List] Failed: ${response.status}`);
       displayConversationList([]);
       return;
     }
     
+    const data = await response.json();
+    const conversations = data.conversations || [];
+    
+    // キャッシュに保存
+    apiCache.set(cacheKey, { data: conversations }, getConfig('APP_SETTINGS.CACHE_DURATION.CONVERSATION_LIST'));
+    
+    displayConversationList(conversations);
+    
+  } catch (err) {
     console.error("Error fetching conversation list:", err);
     
-    // エラーメッセージ表示（システムメッセージとして）
-    addMessage("会話一覧の取得中にエラーが発生しました。", "system");
+    // エラーの種類に応じた処理
+    if (err.message) {
+      // 認証エラーの場合は静かに処理（ログイン促進のため）
+      if (err.message.includes("認証") || err.message.includes("No access token") || err.message.includes("セッション")) {
+        console.log("認証エラーのため会話リストを非表示");
+        displayConversationList([]);
+        return;
+      }
+      
+      // ネットワークエラーの場合
+      if (err.message.includes("ネットワーク")) {
+        console.error("ネットワークエラー: 会話リスト取得失敗");
+        // エラーメッセージは表示せず、空リストのみ表示
+        displayConversationList([]);
+        return;
+      }
+      
+      // サーバーエラーの場合
+      if (err.message.includes("サーバー")) {
+        console.error("サーバーエラー: 会話リスト取得失敗");
+        displayConversationList([]);
+        return;
+      }
+    }
     
-    // エラーの場合でも空の会話一覧を表示
+    // その他のエラーも静かに処理
     displayConversationList([]);
   }
 }
@@ -3931,7 +4016,8 @@ function displayConversationList(conversations) {
     // ── タイトルと 3 点メニューを並べる ──
     const titleSpan = document.createElement("span");
     titleSpan.className = "conv-title";
-    titleSpan.textContent = conv.name || "(名称未設定)";
+    // Workers から返される title フィールドを使用
+    titleSpan.textContent = conv.title || conv.name || "(名称未設定)";
 
     const menuBtn = document.createElement("button");
     menuBtn.className = "conv-menu-btn";
@@ -4011,11 +4097,20 @@ function displayConversationList(conversations) {
     
     // データ属性を設定（ID・名前）
     li.dataset.convId = conv.conversation_id || conv.id;
-    li.dataset.convName = conv.name || "(名称未設定)";
+    li.dataset.convName = conv.title || conv.name || "(名称未設定)";
+    
+    // メッセージ数を表示
+    if (conv.message_count) {
+      const countElem = document.createElement("span");
+      countElem.className = "conversation-count";
+      countElem.textContent = `${conv.message_count}件`;
+      li.appendChild(countElem);
+    }
     
     // 作成日時を表示（あれば）
     if (conv.created_at) {
-      const date = new Date(conv.created_at * 1000);
+      // ISO 8601形式の文字列をパース
+      const date = new Date(conv.created_at);
       const formattedDate = date.toLocaleDateString('ja-JP');
       const timeElem = document.createElement("span");
       timeElem.className = "conversation-date";
@@ -4034,7 +4129,7 @@ function displayConversationList(conversations) {
       li.classList.add("selected");
       
       // 会話IDを設定して履歴取得
-      conversationId = conv.id;
+      conversationId = conv.conversation_id || conv.id;
       await fetchConversationHistory(conv.id, li.dataset.convName);
       sidebarEl.classList.add("collapsed");
       document.body.classList.remove("sidebar-open");
@@ -4409,17 +4504,58 @@ if (loginLink && loginModal && closeLoginModalButton && loginSubmitButton) {
 
   closeLoginModalButton.addEventListener("click", () => {
     loginModal.style.display = "none";
+    // エラーメッセージをクリア
+    const errorMessageEl = document.getElementById("login-error-message");
+    if (errorMessageEl) {
+      errorMessageEl.style.display = "none";
+      errorMessageEl.textContent = "";
+    }
   });
+
+  // Enterキーでログインできるようにする
+  const loginEmailInput = document.getElementById("login-email");
+  const loginPasswordInput = document.getElementById("login-password");
+  
+  const handleEnterKey = (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      loginSubmitButton.click();
+    }
+  };
+  
+  if (loginEmailInput) {
+    loginEmailInput.addEventListener("keypress", handleEnterKey);
+  }
+  if (loginPasswordInput) {
+    loginPasswordInput.addEventListener("keypress", handleEnterKey);
+  }
 
   loginSubmitButton.addEventListener("click", async () => {
     const email = document.getElementById("login-email").value.trim();
     const password = document.getElementById("login-password").value.trim();
+    const errorMessageEl = document.getElementById("login-error-message");
+    
+    // エラーメッセージをクリア
+    if (errorMessageEl) {
+      errorMessageEl.style.display = "none";
+      errorMessageEl.textContent = "";
+    }
+    
     if (!email || !password) {
-      alert("メールアドレスとパスワードを入力してください。");
+      if (errorMessageEl) {
+        errorMessageEl.textContent = "メールアドレスとパスワードを入力してください。";
+        errorMessageEl.style.display = "block";
+      }
       return;
     }
   
+    // ローディング状態を表示
+    loginSubmitButton.disabled = true;
+    loginSubmitButton.textContent = "ログイン中...";
+    
     try {
+      console.log('[Login] Attempting login...');
+      
       // 新しいログインエンドポイントを使用
       const loginEndpoint = getConfig('ENDPOINTS.LOGIN');
 
@@ -4428,18 +4564,36 @@ if (loginLink && loginModal && closeLoginModalButton && loginSubmitButton) {
         headers: {
           "Content-Type": "application/json",
           "X-API-Client": "sirusiru-chat",
-          "X-Tenant-Domain": window.CONFIG?.TENANT_DOMAIN || "example.com"
+          "X-Tenant-Domain": window.CONFIG?.TENANT_DOMAIN || "radish-call.com"
         },
         body: JSON.stringify({ username: email, password: password })
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        alert("ログイン失敗: " + (errorData.error || response.statusText));
+        console.error(`[Login] Failed with status ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        let errorMessage = "ログインに失敗しました";
+        
+        if (response.status === 401) {
+          errorMessage = "メールアドレスまたはパスワードが正しくありません";
+        } else if (response.status === 400) {
+          errorMessage = errorData.detail || "入力内容を確認してください";
+        } else if (response.status >= 500) {
+          errorMessage = "サーバーエラーが発生しました。しばらく待ってから再度お試しください";
+        } else {
+          errorMessage = errorData.detail || errorData.error || errorMessage;
+        }
+        
+        if (errorMessageEl) {
+          errorMessageEl.textContent = errorMessage;
+          errorMessageEl.style.display = "block";
+        }
         return;
       }
 
-      const data = await response.json(); 
+      const data = await response.json();
+      console.log('[Login] Login successful');
+      
       // loginSuccess関数を使用してトークン保存とタイマー設定
       loginSuccess(data);
       
@@ -4449,11 +4603,21 @@ if (loginLink && loginModal && closeLoginModalButton && loginSubmitButton) {
       // 状態更新
       enableUserInteractions();
       
-      // 注: loginSuccess関数内で自動的に会話履歴が更新されるので、
-      // ここでの会話履歴の取得コードは必要ありません
+      // 成功メッセージ
+      addMessage("ログインしました。", "system");
+      
+      console.log('[Login] Login process completed');
+      
     } catch (err) {
-      console.error("ログイン中エラー:", err);
-      alert("ログイン処理中にエラーが発生しました。");
+      console.error("[Login] Error during login:", err);
+      if (errorMessageEl) {
+        errorMessageEl.textContent = "ログイン処理中にエラーが発生しました: " + err.message;
+        errorMessageEl.style.display = "block";
+      }
+    } finally {
+      // ローディング状態を解除
+      loginSubmitButton.disabled = false;
+      loginSubmitButton.textContent = "ログイン";
     }
   });
 }
@@ -5305,6 +5469,15 @@ async function apiFetch(url, options = {}) {
     try {
       let res = await fetch(url, fetchOptions);
 
+      // 503 Service Unavailable エラーの場合は即座にリトライ対象とする
+      if (res.status === 503 && retryCount < maxRetries + 2) {
+        retryCount++;
+        const backoffTime = Math.pow(2, retryCount) * 2000; // より長めの待機
+        console.log(`503 Service Unavailable - Retrying (attempt ${retryCount}) in ${backoffTime}ms...`);
+        await new Promise(resolve => setTimeout(resolve, backoffTime));
+        return executeFetch();
+      }
+
       // 401認証エラー時のリフレッシュ処理
       if (res.status === 401 && authRetryCount < maxAuthRetries) {
         authRetryCount++;
@@ -5335,10 +5508,15 @@ async function apiFetch(url, options = {}) {
 
       return res;
     } catch (error) {
-      // 認証エラー以外のネットワークエラー時の指数バックオフ再試行
-      if (!error.message.includes("Authentication") && retryCount < maxRetries) {
+      // 503エラー（Service Unavailable）の場合も積極的にリトライ
+      const is503Error = error.message && error.message.includes('503');
+      const shouldRetry = !error.message.includes("Authentication") && retryCount < maxRetries;
+      
+      if (shouldRetry || (is503Error && retryCount < maxRetries + 2)) {
         retryCount++;
-        const backoffTime = Math.pow(2, retryCount) * 1000;
+        // 503エラーの場合はより長めの待機時間（コールドスタート対策）
+        const backoffTime = is503Error ? Math.pow(2, retryCount) * 2000 : Math.pow(2, retryCount) * 1000;
+        console.log(`Retrying request (attempt ${retryCount}/${maxRetries}${is503Error ? ' - 503 error' : ''}) in ${backoffTime}ms...`);
         await new Promise(resolve => setTimeout(resolve, backoffTime));
         return executeFetch();
       }

@@ -153,6 +153,9 @@
 
     <h2 class="modal-title">ログイン</h2>
 
+    <!-- エラーメッセージ表示エリア -->
+    <div id="login-error-message" class="login-error-message" style="display: none;"></div>
+
     <!-- 入力フォーム -->
     <div class="login-form-group">
       <label for="login-email">メールアドレス</label>
@@ -173,21 +176,34 @@
 
 <!-- マイページモーダル -->
 <div id="mypage-modal" class="modal-container" style="display:none;">
-  <div class="modal-content">
+  <div class="modal-content mypage-modal-content">
     <button id="close-mypage-modal" class="modal-close-button">&times;</button>
-    <h2>マイページ</h2>
+    <h2 class="modal-title">マイページ</h2>
 
     <!-- ユーザー情報を表示する箇所 -->
-    <div id="user-info-display">
-      <p>メールアドレス: <span id="user-email"></span></p>
-      <p>役職: <span id="user-roles"></span></p>
-      <p>企業名: <span id="user-tenant"></span></p>
-      <p>残会話数: <span id="user-token-balance"></span></p>
-      <!-- 必要な他の項目があれば追加 -->
+    <div id="user-info-display" class="user-info-display">
+      <div class="info-item">
+        <label>メールアドレス</label>
+        <span id="user-email" class="info-value">-</span>
+      </div>
+      <div class="info-item">
+        <label>役職</label>
+        <span id="user-roles" class="info-value">-</span>
+      </div>
+      <div class="info-item">
+        <label>企業名</label>
+        <span id="user-tenant" class="info-value">-</span>
+      </div>
+      <div class="info-item">
+        <label>残会話数</label>
+        <span id="user-token-balance" class="info-value">-</span>
+      </div>
     </div>
 
     <!-- ログアウトボタン -->
-    <button id="logout-button">ログアウト</button>
+    <div class="modal-buttons">
+      <button id="logout-button" class="logout-btn">ログアウト</button>
+    </div>
   </div>
 </div>
 

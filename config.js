@@ -219,11 +219,11 @@ window.CONFIG = {
 
     // フィーチャーフラグ
     FEATURES: {
-      SUGGESTED_QUESTIONS: false,
-      FILE_UPLOAD: false,  // ファイルアップロードも無効化
-      AUDIO_FEATURES: false,  // 音声機能も無効化
-      WEBSOCKET_UPDATES: false,  // WebSocketも無効化
-      DYNAMIC_CONFIG: false,  // 動的設定は無効化
+      SUGGESTED_QUESTIONS: false,  // 提案質問は無効のまま
+      FILE_UPLOAD: true,  // ファイルアップロード有効化
+      AUDIO_FEATURES: true,  // 音声機能有効化
+      WEBSOCKET_UPDATES: true,  // WebSocket有効化
+      DYNAMIC_CONFIG: true,  // 動的設定有効化
       SKIP_AUTH_FOR_TESTING: false  // Django JWT認証を使用
     },
 
