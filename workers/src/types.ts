@@ -59,6 +59,7 @@ export interface CollectedData {
   name?: string;                 // 顧客名
   gender?: 'male' | 'female' | 'other'; // 性別
   age?: number;                  // 年齢
+  customer_info?: CustomerInformation; // お客様情報
 }
 
 export interface CustomerInformation {
