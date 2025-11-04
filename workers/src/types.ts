@@ -46,6 +46,8 @@ export type ConversationState =
   | 'DIAGNOSIS_KNOWLEDGE_CHECK'  // 診断名を知っているか確認
   | 'DIAGNOSIS_INPUT'            // 診断名入力待ち
   | 'SYMPTOM_INPUT'              // 症状入力待ち(複数ターン可)
+  | 'DISEASE_SELECTION'          // 疾病選択画面
+  | 'DISEASE_DETAIL_VIEW'        // 疾病詳細表示
   | 'SYMPTOM_FOLLOWUP'           // 症状追加質問
   | 'RESULT'                     // 判定結果表示
   | 'FINAL_CONFIRMATION'         // 最終ヒアリング
@@ -56,6 +58,13 @@ export interface CollectedData {
   knowsDiagnosis?: boolean;      // 診断名を知っているか
   diagnosisName?: string;        // 診断名
   symptoms?: string[];           // 症状リスト
+  diseaseCandidates?: Array<{    // 疾病候補（GPT生成）
+    disease_name: string;
+    confidence: number;
+    reasoning: string;
+  }>;
+  selectedDisease?: string;      // 選択された疾病
+  diseaseSearchResults?: Array<[string, any[]]>; // 疾病ごとの検索結果
   name?: string;                 // 顧客名
   gender?: 'male' | 'female' | 'other'; // 性別
   age?: number;                  // 年齢
@@ -163,6 +172,7 @@ export interface ResponseOption {
   value: string; // 内部値(yes_with_diagnosis, yes_without_diagnosis, no)
   label: string; // 表示ラベル
   description?: string; // 説明文
+  display?: 'inline' | 'block'; // 表示形式（横並び or 縦並び）
 }
 
 export interface Source {

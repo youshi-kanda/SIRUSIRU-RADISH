@@ -116,6 +116,15 @@ export default {
         return response;
       }
 
+      // Conversation list endpoint
+      if (url.pathname === '/api/conversation-list' && request.method === 'GET') {
+        const response = await handleConversationList(request, env);
+        Object.entries(corsHeaders).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+        return response;
+      }
+
       return new Response(
         JSON.stringify({ error: 'Not Found', code: 'NOT_FOUND' }),
         {
@@ -128,8 +137,17 @@ export default {
       );
     } catch (error) {
       console.error('Worker error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : '';
+      console.error('Error details:', { message: errorMessage, stack: errorStack });
+      
       return new Response(
-        JSON.stringify({ error: 'Internal Server Error', code: 'INTERNAL_ERROR' }),
+        JSON.stringify({ 
+          error: 'Internal Server Error', 
+          code: 'INTERNAL_ERROR',
+          message: errorMessage,
+          timestamp: new Date().toISOString()
+        }),
         {
           status: 500,
           headers: {
@@ -148,7 +166,7 @@ export default {
 async function handleChatRequest(request: Request, env: Env): Promise<Response> {
   try {
     // リクエストボディを解析
-    const body = await request.json<ChatRequest>();
+    const body = await request.json() as ChatRequest;
     const { message, query, conversation_id, user_id, selection } = body;
     
     // messageまたはqueryを使用（messageを優先）
@@ -175,6 +193,37 @@ async function handleChatRequest(request: Request, env: Env): Promise<Response> 
 
       case 'SYMPTOM_INPUT':
         return await handleSymptomInputState(env, convId, userInput, collectedData);
+
+      case 'DISEASE_SELECTION':
+        if (selection === 'edit_symptom') {
+          // 症状修正へ
+          await updateConversationState(env, convId, 'SYMPTOM_INPUT', {});
+          return createSuccessResponse({
+            answer: 'かしこまりました。\n\n**症状を修正してください。**\n\n例: 胃が痛い、頭痛がする、めまいがするなど',
+            conversation_id: convId,
+            state: 'SYMPTOM_INPUT',
+            disease_detected: null,
+            confidence_score: 0,
+            sources: [],
+            type: 'question',
+            requires_input: 'text',
+          });
+        } else {
+          // 疾病選択
+          return await handleDiseaseSelection(env, convId, selection, collectedData);
+        }
+
+      case 'DISEASE_DETAIL_VIEW':
+        if (selection === 'back_to_list') {
+          // 疾病リストに戻る（症状修正オプション付き）
+          return await showDiseaseListWithSymptomEdit(env, convId, collectedData);
+        } else if (selection === 'proceed') {
+          // 最終確認へ
+          await updateConversationState(env, convId, 'FINAL_CONFIRMATION', {});
+          return await handleFinalConfirmation(env, convId, body);
+        }
+        // その他のケースは詳細表示を再表示
+        return await handleDiseaseDetailView(env, convId, collectedData, collectedData.selectedDisease || '');
 
       case 'SYMPTOM_FOLLOWUP':
         return await handleSymptomFollowup(env, convId, userInput, collectedData);
@@ -706,7 +755,7 @@ async function handleDiagnosisInputState(
 }
 
 /**
- * SYMPTOM_INPUT状態: 症状入力を処理
+ * SYMPTOM_INPUT状態: 症状入力を処理（疾病選択式に変更）
  */
 async function handleSymptomInputState(
   env: Env,
@@ -718,173 +767,278 @@ async function handleSymptomInputState(
     return createErrorResponse('症状を入力してください', 'BAD_REQUEST');
   }
 
-  // 症状を保存
-  const symptoms = collectedData.symptoms || [];
-  symptoms.push(userInput);
+  try {
+    console.log(`[SYMPTOM_INPUT] Processing symptoms for conversation ${conversationId}`);
+    
+    // 症状を保存
+    const symptoms = collectedData.symptoms || [];
+    symptoms.push(userInput);
 
-  await updateConversationState(
-    env,
-    conversationId,
-    'SYMPTOM_INPUT',
-    { symptoms },
-    { role: 'user', content: userInput }
-  );
+    await updateConversationState(
+      env,
+      conversationId,
+      'SYMPTOM_INPUT',
+      { symptoms },
+      { role: 'user', content: userInput }
+    );
 
-  const updatedData = { ...collectedData, symptoms };
+    const updatedData = { ...collectedData, symptoms };
+    
+    console.log(`[SYMPTOM_INPUT] Generating disease candidates...`);
+    // GPT-4o-miniで疾病候補を生成
+    const diseaseCandidates = await generateDiseaseCandidates(env, symptoms.join('、'));
+    console.log(`[SYMPTOM_INPUT] Generated ${diseaseCandidates.candidates.length} candidates`);
+    
+    // 各疾病の検索結果を事前取得して保存（表示はしない）
+    // 🚀 並列処理に変更してパフォーマンス向上
+    console.log(`[SYMPTOM_INPUT] Starting parallel vector searches...`);
+    const diseaseSearchResults: Array<[string, any[]]> = await Promise.all(
+      diseaseCandidates.candidates.map(async (candidate) => {
+        try {
+          const results = await searchKnowledgeByVector(
+            env,
+            candidate.disease_name,
+            undefined,
+            5
+          );
+          console.log(`${candidate.disease_name}の検索結果: ${results.length}件`);
+          return [candidate.disease_name, results] as [string, any[]];
+        } catch (error) {
+          console.error(`${candidate.disease_name}の検索に失敗:`, error);
+          return [candidate.disease_name, []] as [string, any[]];
+        }
+      })
+    );
+    console.log(`[SYMPTOM_INPUT] Completed all vector searches`);
+    
+    // 状態を保存
+    await updateConversationState(env, conversationId, 'DISEASE_SELECTION', {
+      diseaseCandidates: diseaseCandidates.candidates,
+      diseaseSearchResults
+    });
+    
+    // 疾病選択画面を表示
+    let responseText = `症状を確認しました。\n\n`;
+    responseText += `━━━━━━━━━━━━━━━━━━━━\n`;
+    responseText += `**📋 該当する可能性のある疾病**\n`;
+    responseText += `━━━━━━━━━━━━━━━━━━━━\n\n`;
+    responseText += `以下の疾病が考えられます。\n`;
+    responseText += `詳細を確認したい疾病を選択してください。\n`;
+    
+    // 疾病選択ボタン（横並び） + 症状修正ボタン（縦並び）
+    const options = [
+      ...diseaseCandidates.candidates.map((c) => ({
+        value: c.disease_name,
+        label: c.disease_name,
+        display: 'inline' as const
+      })),
+      { value: 'edit_symptom', label: '症状を修正する', display: 'block' as const }
+    ];
+    
+    console.log(`[SYMPTOM_INPUT] Successfully completed, returning response`);
+    return createSuccessResponse({
+      answer: responseText,
+      conversation_id: conversationId,
+      state: 'DISEASE_SELECTION',
+      disease_detected: null,
+      confidence_score: 0.7,
+      sources: [],
+      type: 'question',
+      options,
+      requires_input: 'selection',
+    });
+  } catch (error) {
+    console.error('[SYMPTOM_INPUT] Error processing symptoms:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[SYMPTOM_INPUT] Error details:', { message: errorMessage });
+    
+    // エラー時はシンプルなテキスト入力に戻す
+    return createErrorResponse(
+      `症状の処理中にエラーが発生しました: ${errorMessage}。もう一度お試しください。`,
+      'PROCESSING_ERROR'
+    );
+  }
+}
+
+/**
+ * DISEASE_SELECTION状態: 疾病選択を処理
+ */
+async function handleDiseaseSelection(
+  env: Env,
+  conversationId: string,
+  selection: string | undefined,
+  collectedData: any
+): Promise<Response> {
+  if (!selection) {
+    return createErrorResponse('疾病を選択してください', 'BAD_REQUEST');
+  }
   
-  // GPT-4o-miniで疾病候補を生成
-  const diseaseCandidates = await generateDiseaseCandidates(env, symptoms.join('、'));
-  
-  // === STEP 1: 疾病可能性の一覧表示 ===
-  let responseText = `症状を確認しました。\n\n`;
-  responseText += `━━━━━━━━━━━━━━━━━━━━\n`;
-  responseText += `**📋 該当する可能性のある疾病**\n`;
-  responseText += `━━━━━━━━━━━━━━━━━━━━\n\n`;
-  
-  diseaseCandidates.candidates.forEach((candidate, index) => {
-    responseText += `${index + 1}. **${candidate.disease_name}**\n`;
+  // 選択された疾病を保存
+  await updateConversationState(env, conversationId, 'DISEASE_DETAIL_VIEW', {
+    selectedDisease: selection
   });
   
-  responseText += `\n━━━━━━━━━━━━━━━━━━━━\n`;
-  responseText += `**🏥 各疾病の保険適応情報**\n`;
+  return await handleDiseaseDetailView(env, conversationId, collectedData, selection);
+}
+
+/**
+ * DISEASE_DETAIL_VIEW状態: 選択された疾病の詳細を表示
+ */
+async function handleDiseaseDetailView(
+  env: Env,
+  conversationId: string,
+  collectedData: any,
+  diseaseName: string
+): Promise<Response> {
+  // 保存済みの検索結果から該当疾病のデータを取得
+  const diseaseSearchResults = collectedData.diseaseSearchResults || [];
+  const diseaseEntry = diseaseSearchResults.find(([name, _]: [string, any]) => name === diseaseName);
+  const results = diseaseEntry ? diseaseEntry[1] : [];
+  
+  console.log(`${diseaseName}の検索結果: ${results.length}件`);
+  
+  let responseText = `━━━━━━━━━━━━━━━━━━━━\n`;
+  responseText += `**🏥 ${diseaseName} の保険適応情報**\n`;
   responseText += `━━━━━━━━━━━━━━━━━━━━\n\n`;
   
-  // 全ての検索結果を保存
-  let allResults: any[] = [];
-  
-  // === STEP 2: 各疾病の保険適応を提示 ===
-  for (let i = 0; i < diseaseCandidates.candidates.length; i++) {
-    const candidate = diseaseCandidates.candidates[i];
+  if (results.length > 0) {
+    // 保険会社ごとに分類
+    const insuranceMap = new Map<string, Array<{content: string, source: string, score: number, canJoin: boolean}>>();
     
-    // ベクトル検索で該当疾病の保険適応情報を取得
-    const results = await searchKnowledgeByVector(
-      env,
-      candidate.disease_name,
-      undefined, // company_id
-      5 // 上位5件
-    );
-    
-    console.log(`${candidate.disease_name}の検索結果:`, results.length);
-    
-    responseText += `### ${i + 1}. ${candidate.disease_name}\n\n`;
-    
-    if (results.length > 0) {
-      // 保険会社ごとに分類（条件とソース情報を一緒に保存）
-      const insuranceMap = new Map<string, Array<{content: string, source: string, score: number, canJoin: boolean}>>();
+    for (const searchResult of results) {
+      const knowledge = searchResult.knowledge;
+      const companyId = knowledge.company_id;
+      const content = knowledge.chunk_text;
+      const sourceFile = knowledge.source_file || 'ファイル名不明';
+      const score = searchResult.score;
       
-      // 各検索結果を処理
-      for (const searchResult of results) {
-        const knowledge = searchResult.knowledge;
-        const companyId = knowledge.company_id;
-        const content = knowledge.chunk_text;
-        const sourceFile = knowledge.source_file || 'ファイル名不明';
-        const score = searchResult.score;
-        
-        // データベースから会社名を取得
-        const companyResult = await env.DB.prepare(
-          'SELECT company_name FROM insurance_companies WHERE id = ?'
-        ).bind(companyId).first<{ company_name: string }>();
-        
-        const companyName = companyResult?.company_name || `保険会社ID:${companyId}`;
-        
-        // 内容を正規化（加入可否の表記を統一）
-        let normalizedContent = content
-          // 「加入可能」「加入不可」を「○」「×」に変換
-          .replace(/加入可能/g, '○')
-          .replace(/加入不可/g, '×')
-          // 「〇」を「○」に統一
-          .replace(/〇/g, '○');
-        
-        // 加入可能かどうかを判定
-        const canJoin = normalizedContent.includes('○');
-        
-        // 内容を200文字に制限
-        const summary = normalizedContent.length > 200 
-          ? normalizedContent.substring(0, 200) + '...' 
-          : normalizedContent;
-        
-        if (!insuranceMap.has(companyName)) {
-          insuranceMap.set(companyName, []);
-        }
-        
-        insuranceMap.get(companyName)!.push({
-          content: summary,
-          source: sourceFile,
-          score: score,
-          canJoin: canJoin
-        });
-        
-        // allResultsに変換して追加
-        allResults.push({
-          content: normalizedContent,
-          score: searchResult.score,
-          metadata: {
-            company_id: companyId,
-            company_name: companyName,
-            source_file: sourceFile,
-          }
-        });
+      // データベースから会社名を取得
+      const companyResult = await env.DB.prepare(
+        'SELECT company_name FROM insurance_companies WHERE id = ?'
+      ).bind(companyId).first<{ company_name: string }>();
+      
+      const companyName = companyResult?.company_name || `保険会社ID:${companyId}`;
+      
+      // 内容を正規化
+      let normalizedContent = content
+        .replace(/加入可能/g, '○')
+        .replace(/加入不可/g, '×')
+        .replace(/〇/g, '○');
+      
+      const canJoin = normalizedContent.includes('○');
+      const summary = normalizedContent.length > 200 
+        ? normalizedContent.substring(0, 200) + '...' 
+        : normalizedContent;
+      
+      if (!insuranceMap.has(companyName)) {
+        insuranceMap.set(companyName, []);
       }
       
-      // 保険会社ごとに表示（加入可能な保険を優先）
-      let companyIndex = 0;
+      insuranceMap.get(companyName)!.push({
+        content: summary,
+        source: sourceFile,
+        score: score,
+        canJoin: canJoin
+      });
+    }
+    
+    // 保険会社ごとに表示
+    let companyIndex = 0;
+    const sortedCompanies = Array.from(insuranceMap.entries()).sort((a, b) => {
+      const aHasJoinable = a[1].some(item => item.canJoin);
+      const bHasJoinable = b[1].some(item => item.canJoin);
+      if (aHasJoinable && !bHasJoinable) return -1;
+      if (!aHasJoinable && bHasJoinable) return 1;
+      return 0;
+    });
+    
+    sortedCompanies.forEach(([company, items]) => {
+      companyIndex++;
       
-      // 加入可能な保険会社を先に表示
-      const sortedCompanies = Array.from(insuranceMap.entries()).sort((a, b) => {
-        const aHasJoinable = a[1].some(item => item.canJoin);
-        const bHasJoinable = b[1].some(item => item.canJoin);
-        if (aHasJoinable && !bHasJoinable) return -1;
-        if (!aHasJoinable && bHasJoinable) return 1;
+      const sortedItems = items.sort((a, b) => {
+        if (a.canJoin && !b.canJoin) return -1;
+        if (!a.canJoin && b.canJoin) return 1;
         return 0;
       });
       
-      sortedCompanies.forEach(([company, items]) => {
-        companyIndex++;
-        
-        // 加入可能な項目を先に表示
-        const sortedItems = items.sort((a, b) => {
-          if (a.canJoin && !b.canJoin) return -1;
-          if (!a.canJoin && b.canJoin) return 1;
-          return 0;
-        });
-        
-        responseText += `**${String.fromCharCode(65 + companyIndex - 1)}. ${company}**\n`;
-        sortedItems.forEach((item, idx) => {
-          responseText += `   ${idx + 1}) ${item.content}\n`;
-          // 引用元情報をコンパクトに表示（各項目の直下）
-          const fileName = item.source.split('/').pop() || item.source;
-          const scorePercent = Math.round(item.score * 100);
-          responseText += `      📎 引用: ${fileName} (一致度: ${scorePercent}%)\n`;
-        });
-        responseText += `\n`;
+      responseText += `**${String.fromCharCode(65 + companyIndex - 1)}. ${company}**\n\n`;
+      sortedItems.forEach((item, idx) => {
+        responseText += `${item.content}\n\n`;
+        const fileName = item.source.split('/').pop() || item.source;
+        const scorePercent = Math.round(item.score * 100);
+        responseText += `📎 引用元: ${fileName} (一致度: ${scorePercent}%)\n`;
+        responseText += `━━━━━━━━━━━━━━━━\n`;
+        if (idx < sortedItems.length - 1) {
+          responseText += `\n`;
+        }
       });
-    } else {
-      responseText += `   ℹ️ 該当する保険適応情報が見つかりませんでした。\n\n`;
-    }
-    
-    // 疾病間の区切り線（疾病ブロックの最後、最後の疾病以外）
-    if (i < diseaseCandidates.candidates.length - 1) {
-      responseText += `\n---\n\n`;
-    }
+      
+      if (companyIndex < sortedCompanies.length) {
+        responseText += `\n`;
+      }
+    });
+  } else {
+    responseText += `ℹ️ 該当する保険適応情報が見つかりませんでした。\n\n`;
   }
   
-  responseText += `\n━━━━━━━━━━━━━━━━━━━━\n\n`;
-  responseText += `✅ 最終確認へ進んでよろしいですか？`;
-  
-  const nextState = 'RESULT';
-  await updateConversationState(env, conversationId, nextState, updatedData);
-
   return createSuccessResponse({
     answer: responseText,
     conversation_id: conversationId,
-    state: nextState,
-    disease_detected: null,
-    confidence_score: 0.7,
-    sources: allResults,
+    state: 'DISEASE_DETAIL_VIEW',
+    disease_detected: diseaseName,
+    confidence_score: results.length > 0 ? results[0].score : 0,
+    sources: results.slice(0, 3).map((r: any) => ({
+      source_file: r.knowledge.source_file,
+      chunk_text: r.knowledge.chunk_text.substring(0, 100) + '...',
+      score: r.score,
+    })),
     type: 'result',
     options: [
-      { value: 'proceed', label: '最終確認へ進む' }
+      { value: 'back_to_list', label: '他の疾病を確認する', display: 'inline' },
+      { value: 'proceed', label: '最終確認へ進む', display: 'inline' }
     ],
+    requires_input: 'selection',
+  });
+}
+
+/**
+ * 疾病リストを症状修正オプション付きで表示
+ */
+async function showDiseaseListWithSymptomEdit(
+  env: Env,
+  conversationId: string,
+  collectedData: any
+): Promise<Response> {
+  const symptoms = collectedData.symptoms || [];
+  const diseaseCandidates = collectedData.diseaseCandidates || [];
+  
+  let responseText = `━━━━━━━━━━━━━━━━━━━━\n`;
+  responseText += `**📋 該当する可能性のある疾病**\n`;
+  responseText += `━━━━━━━━━━━━━━━━━━━━\n\n`;
+  responseText += `現在の症状: ${symptoms.join('、')}\n\n`;
+  responseText += `詳細を確認したい疾病を選択してください。\n`;
+  
+  // 疾病選択ボタン（横並び） + 症状修正ボタン
+  const options = [
+    ...diseaseCandidates.map((c: any) => ({
+      value: c.disease_name,
+      label: c.disease_name,
+      display: 'inline'
+    })),
+    { value: 'edit_symptom', label: '症状を修正する', display: 'block' }
+  ];
+  
+  await updateConversationState(env, conversationId, 'DISEASE_SELECTION', {});
+  
+  return createSuccessResponse({
+    answer: responseText,
+    conversation_id: conversationId,
+    state: 'DISEASE_SELECTION',
+    disease_detected: null,
+    confidence_score: 0,
+    sources: [],
+    type: 'question',
+    options,
     requires_input: 'selection',
   });
 }
@@ -1262,6 +1416,8 @@ async function handleDjangoTokenProxy(request: Request, env: Env): Promise<Respo
     // リクエストボディを取得
     const body = await request.text();
     
+    console.log('[JWT Token] Proxying login request to Django API');
+    
     // Django APIにプロキシ
     const djangoResponse = await fetch(djangoApiUrl, {
       method: 'POST',
@@ -1274,6 +1430,8 @@ async function handleDjangoTokenProxy(request: Request, env: Env): Promise<Respo
     // レスポンスをそのまま返す
     const responseBody = await djangoResponse.text();
     
+    console.log(`[JWT Token] Django response status: ${djangoResponse.status}`);
+    
     return new Response(responseBody, {
       status: djangoResponse.status,
       headers: {
@@ -1281,10 +1439,11 @@ async function handleDjangoTokenProxy(request: Request, env: Env): Promise<Respo
       },
     });
   } catch (error) {
-    console.error('Django token proxy error:', error);
+    console.error('[JWT Token] Django token proxy error:', error);
     return new Response(
       JSON.stringify({
         error: '認証サーバーへの接続中にエラーが発生しました',
+        details: error instanceof Error ? error.message : 'Unknown error'
       }),
       {
         status: 500,
@@ -1305,6 +1464,8 @@ async function handleDjangoTokenRefreshProxy(request: Request, env: Env): Promis
     // リクエストボディを取得
     const body = await request.text();
     
+    console.log('[JWT Refresh] Proxying refresh request to Django API');
+    
     // Django APIにプロキシ
     const djangoResponse = await fetch(djangoApiUrl, {
       method: 'POST',
@@ -1317,6 +1478,8 @@ async function handleDjangoTokenRefreshProxy(request: Request, env: Env): Promis
     // レスポンスをそのまま返す
     const responseBody = await djangoResponse.text();
     
+    console.log(`[JWT Refresh] Django response status: ${djangoResponse.status}`);
+    
     return new Response(responseBody, {
       status: djangoResponse.status,
       headers: {
@@ -1324,10 +1487,11 @@ async function handleDjangoTokenRefreshProxy(request: Request, env: Env): Promis
       },
     });
   } catch (error) {
-    console.error('Django token refresh proxy error:', error);
+    console.error('[JWT Refresh] Django token refresh proxy error:', error);
     return new Response(
       JSON.stringify({
         error: 'トークン更新サーバーへの接続中にエラーが発生しました',
+        details: error instanceof Error ? error.message : 'Unknown error'
       }),
       {
         status: 500,
@@ -1386,8 +1550,7 @@ async function handleTokenConsume(request: Request, env: Env): Promise<Response>
     return new Response(
       JSON.stringify({
         success: true,
-        remaining_tokens: 999999,
-        consumed_tokens: body.tokens || 0
+        remaining_tokens: 1000
       }),
       {
         status: 200,
@@ -1397,10 +1560,7 @@ async function handleTokenConsume(request: Request, env: Env): Promise<Response>
   } catch (error) {
     console.error('Token consume error:', error);
     return new Response(
-      JSON.stringify({ 
-        success: false,
-        error: 'トークン消費記録中にエラーが発生しました' 
-      }),
+      JSON.stringify({ error: 'トークン消費処理中にエラーが発生しました' }),
       {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
@@ -1409,4 +1569,80 @@ async function handleTokenConsume(request: Request, env: Env): Promise<Response>
   }
 }
 
+/**
+ * 会話一覧取得エンドポイント
+ */
+async function handleConversationList(request: Request, env: Env): Promise<Response> {
+  try {
+    const url = new URL(request.url);
+    const userParam = url.searchParams.get('user');
+    
+    if (!userParam) {
+      return new Response(
+        JSON.stringify({ error: 'User parameter is required' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+    }
 
+    console.log(`[Conversation List] Fetching conversations for user: ${userParam}`);
+
+    // D1データベースから会話一覧を取得
+    const { results } = await env.DB.prepare(
+      `SELECT id, user_id, state, created_at, updated_at, messages
+       FROM conversations 
+       WHERE user_id = ? 
+       ORDER BY updated_at DESC 
+       LIMIT 50`
+    ).bind(userParam).all();
+
+    // 会話一覧を整形
+    const conversations = results.map((row: any) => {
+      let messages = [];
+      try {
+        messages = JSON.parse(row.messages || '[]');
+      } catch (e) {
+        console.error('Failed to parse messages:', e);
+      }
+
+      // 最初のユーザーメッセージをタイトルとして使用
+      const firstUserMessage = messages.find((m: any) => m.role === 'user');
+      const title = firstUserMessage 
+        ? firstUserMessage.content.substring(0, 50) + (firstUserMessage.content.length > 50 ? '...' : '')
+        : '新しい会話';
+
+      return {
+        conversation_id: row.id,
+        title,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        message_count: messages.length,
+        state: row.state || 'INITIAL'
+      };
+    });
+
+    console.log(`[Conversation List] Found ${conversations.length} conversations`);
+
+    return new Response(
+      JSON.stringify({ conversations }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  } catch (error) {
+    console.error('[Conversation List] Error:', error);
+    return new Response(
+      JSON.stringify({ 
+        error: '会話一覧取得中にエラーが発生しました',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
+}

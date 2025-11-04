@@ -9,7 +9,7 @@ const MODEL = 'gpt-4o-mini';
 const TEMPERATURE = 0.2; // ナレッジベース専用モードで低温度
 
 /**
- * OpenAI APIを呼び出す共通関数
+ * OpenAI APIを呼び出す共通関数（タイムアウト対策付き）
  */
 async function callOpenAI(
   env: Env,
@@ -17,27 +17,42 @@ async function callOpenAI(
   temperature: number = TEMPERATURE,
   maxTokens: number = 1000
 ): Promise<string> {
-  const response = await fetch(OPENAI_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      temperature,
-      max_tokens: maxTokens,
-    }),
-  });
+  // 🚀 タイムアウト設定を追加（25秒）
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 25000);
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`OpenAI API error: ${error}`);
+  try {
+    const response = await fetch(OPENAI_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages,
+        temperature,
+        max_tokens: maxTokens,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`OpenAI API error: ${error}`);
+    }
+
+    const data = await response.json<any>();
+    return data.choices[0].message.content;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('OpenAI API request timed out after 25 seconds');
+    }
+    throw error;
   }
-
-  const data = await response.json<any>();
-  return data.choices[0].message.content;
 }
 
 /**
