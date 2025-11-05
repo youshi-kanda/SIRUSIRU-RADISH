@@ -1036,16 +1036,22 @@ async function sendMessage(userInput, files = []) {
     const botResponse = data.answer || "応答がありません";
     lastBotResponse = botResponse;
 
-    // 選択ボタンがある場合は一緒に表示
-    addMessage(botResponse, "bot", data.options);
-    
-    // お客様情報入力が必要な場合、モーダルを表示
+    // お客様情報入力が必要な場合、先にモーダルを表示（メッセージ表示前）
     if (data.state === 'CUSTOMER_INFO_INPUT' || data.requires_customer_info === true) {
       console.log("お客様情報入力状態を検出 - モーダルを表示します");
-      // 少し遅延させてメッセージ表示後にモーダルを開く
+      console.log("データ詳細:", { state: data.state, requires_customer_info: data.requires_customer_info });
+      
+      // メッセージを表示
+      addMessage(botResponse, "bot", data.options);
+      
+      // モーダルを即座に表示（DOMレンダリング完了後）
       setTimeout(() => {
+        console.log("モーダル表示を実行");
         showCustomerInfoModal();
-      }, 500);
+      }, 100);
+    } else {
+      // 通常のメッセージ表示（お客様情報入力不要の場合）
+      addMessage(botResponse, "bot", data.options);
     }
     
     // フォームがある場合は表示
@@ -1907,8 +1913,23 @@ function addSelectionButtons(options) {
         const botResponse = data.answer || "応答がありません";
         lastBotResponse = botResponse;
         
-        // 新しいoptionsがあれば一緒に表示
-        addMessage(botResponse, "bot", data.options);
+        // お客様情報入力が必要な場合、先にモーダルを表示
+        if (data.state === 'CUSTOMER_INFO_INPUT' || data.requires_customer_info === true) {
+          console.log("[選択ボタン] お客様情報入力状態を検出 - モーダルを表示します");
+          console.log("[選択ボタン] データ詳細:", { state: data.state, requires_customer_info: data.requires_customer_info });
+          
+          // メッセージを表示
+          addMessage(botResponse, "bot", data.options);
+          
+          // モーダルを即座に表示
+          setTimeout(() => {
+            console.log("[選択ボタン] モーダル表示を実行");
+            showCustomerInfoModal();
+          }, 100);
+        } else {
+          // 通常のメッセージ表示
+          addMessage(botResponse, "bot", data.options);
+        }
         
         // ボタンコンテナを削除
         if (buttonContainer.parentNode) {
