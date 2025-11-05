@@ -180,9 +180,30 @@ async function handleChatRequest(request: Request, env: Env): Promise<Response> 
     // 状態に応じて処理を分岐
     switch (conversation.state) {
       case 'INITIAL':
+        // ユーザーが症状を直接入力した場合、症状入力として処理
+        if (userInput && userInput.trim() !== '') {
+          const classification = await classifyInput(env, userInput);
+          
+          if (classification.type === 'SYMPTOM') {
+            // 症状として認識された場合、症状入力状態へ
+            await updateConversationState(env, convId, 'SYMPTOM_INPUT', { symptoms: [userInput] });
+            return await handleSymptomInputState(env, convId, userInput, { symptoms: [userInput] });
+          }
+        }
+        // 通常の初期状態処理
         return await handleInitialState(env, convId, user_id || null);
 
       case 'TREATMENT_CHECK':
+        // ユーザーが症状を直接入力した場合
+        if (userInput && !selection) {
+          const classification = await classifyInput(env, userInput);
+          
+          if (classification.type === 'SYMPTOM') {
+            // 症状として認識された場合、症状入力状態へ
+            await updateConversationState(env, convId, 'SYMPTOM_INPUT', { symptoms: [userInput], hasTreatment: 'yes' });
+            return await handleSymptomInputState(env, convId, userInput, { symptoms: [userInput], hasTreatment: 'yes' });
+          }
+        }
         return await handleTreatmentCheck(env, convId, selection, userInput);
 
       case 'DIAGNOSIS_KNOWLEDGE_CHECK':
