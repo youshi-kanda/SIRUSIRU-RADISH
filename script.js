@@ -4160,6 +4160,11 @@ function displayConversationList(conversations) {
       
       // 会話IDを設定して履歴取得
       conversationId = conv.conversation_id || conv.id;
+      
+      // 別の会話に切り替えるため、お客様情報の保存データをクリア
+      savedCustomerInfo = null;
+      console.log('[Conversation Switch] Cleared saved customer info');
+      
       await fetchConversationHistory(conv.id, li.dataset.convName);
       sidebarEl.classList.add("collapsed");
       document.body.classList.remove("sidebar-open");
@@ -4185,6 +4190,10 @@ async function createNewConversation() {
     
     // conversationIdをリセット（新規会話のため）
     conversationId = "";
+    
+    // お客様情報の保存データをクリア（新規会話のため）
+    savedCustomerInfo = null;
+    console.log('[New Conversation] Cleared saved customer info');
     
     // 新規会話作成API呼び出し
     const resp = await apiFetch(getConfig('ENDPOINTS.CONVERSATION_NEW'), {
@@ -7246,16 +7255,44 @@ const customerInfoForm = document.getElementById('customer-info-form');
 const customerInfoCloseBtn = document.getElementById('customer-info-modal-close');
 const customerInfoCancelBtn = document.getElementById('customer-info-cancel');
 
+// お客様情報の一時保存用（修正時に復元するため）
+let savedCustomerInfo = null;
+
 // モーダルを開く関数
 function showCustomerInfoModal() {
   if (customerInfoModal) {
     customerInfoModal.style.display = 'flex';
-    // フォームをリセット
+    
     if (customerInfoForm) {
-      customerInfoForm.reset();
+      // 保存されたデータがある場合は復元、なければリセット
+      if (savedCustomerInfo) {
+        console.log('[Customer Info Modal] Restoring saved data:', savedCustomerInfo);
+        restoreCustomerInfoForm(savedCustomerInfo);
+      } else {
+        customerInfoForm.reset();
+      }
       clearAllErrors();
     }
   }
+}
+
+// フォームに保存データを復元する関数
+function restoreCustomerInfoForm(data) {
+  if (!data) return;
+  
+  const nameInput = document.getElementById('customer-name');
+  const birthdateInput = document.getElementById('customer-birthdate');
+  const genderSelect = document.getElementById('customer-gender');
+  const addressInput = document.getElementById('customer-address');
+  const phoneInput = document.getElementById('customer-phone');
+  const emailInput = document.getElementById('customer-email');
+  
+  if (nameInput && data.name) nameInput.value = data.name;
+  if (birthdateInput && data.birthdate) birthdateInput.value = data.birthdate;
+  if (genderSelect && data.gender) genderSelect.value = data.gender;
+  if (addressInput && data.address) addressInput.value = data.address;
+  if (phoneInput && data.phone) phoneInput.value = data.phone;
+  if (emailInput && data.email) emailInput.value = data.email;
 }
 
 // モーダルを閉じる関数
@@ -7263,7 +7300,7 @@ function hideCustomerInfoModal() {
   if (customerInfoModal) {
     customerInfoModal.style.display = 'none';
     if (customerInfoForm) {
-      customerInfoForm.reset();
+      // 閉じる際はデータを保持（リセットしない）
       clearAllErrors();
     }
   }
@@ -7396,6 +7433,17 @@ async function submitCustomerInfo(formData) {
     
     const result = await response.json();
     console.log("お客様情報送信成功:", result);
+    
+    // フォームデータを保存（修正時に復元するため）
+    savedCustomerInfo = {
+      name: formData.name,
+      birthdate: formData.birthdate,
+      gender: formData.gender,
+      address: formData.address,
+      phone: formData.phone,
+      email: formData.email
+    };
+    console.log('[Customer Info] Saved for future edits:', savedCustomerInfo);
     
     // モーダルを閉じる
     hideCustomerInfoModal();
