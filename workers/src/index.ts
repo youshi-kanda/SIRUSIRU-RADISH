@@ -171,37 +171,60 @@ async function handleChatRequest(request: Request, env: Env): Promise<Response> 
     
     // messageまたはqueryを使用（messageを優先）
     const userInput = message || query;
+    console.log('[handleChatRequest] User input:', userInput);
 
     // 会話IDを生成または取得
     const convId = conversation_id || generateConversationId();
+    console.log('[handleChatRequest] Conversation ID:', convId);
+    
     const conversation = await getOrCreateConversation(env, convId, user_id || null);
+    console.log('[handleChatRequest] Current conversation state:', conversation.state);
+    
     const collectedData = getCollectedData(conversation);
 
     // 状態に応じて処理を分岐
     switch (conversation.state) {
       case 'INITIAL':
-        // ユーザーが症状を直接入力した場合、症状入力として処理
-        if (userInput && userInput.trim() !== '') {
-          const classification = await classifyInput(env, userInput);
-          
-          if (classification.type === 'SYMPTOM') {
-            // 症状として認識された場合、症状入力状態へ
-            await updateConversationState(env, convId, 'SYMPTOM_INPUT', { symptoms: [userInput] });
-            return await handleSymptomInputState(env, convId, userInput, { symptoms: [userInput] });
-          }
+        // ユーザー入力がない場合のみ初期メッセージを表示
+        if (!userInput || userInput.trim() === '') {
+          console.log('[INITIAL] No user input, showing welcome message');
+          return await handleInitialState(env, convId, user_id || null);
         }
-        // 通常の初期状態処理
+        
+        // ユーザー入力がある場合、症状/疾病名を判定
+        console.log('[INITIAL] Classifying user input:', userInput);
+        const initialClassification = await classifyInput(env, userInput);
+        console.log('[INITIAL] Classification result:', initialClassification);
+        
+        if (initialClassification.type === 'SYMPTOM') {
+          // 症状として認識 → 症状入力状態へ
+          console.log('[INITIAL] Detected as SYMPTOM, transitioning to SYMPTOM_INPUT');
+          await updateConversationState(env, convId, 'SYMPTOM_INPUT', { symptoms: [userInput] });
+          return await handleSymptomInputState(env, convId, userInput, { symptoms: [userInput] });
+        } else if (initialClassification.type === 'DISEASE') {
+          // 疾病名として認識 → 診断名入力状態へ
+          console.log('[INITIAL] Detected as DISEASE, transitioning to DIAGNOSIS_INPUT');
+          await updateConversationState(env, convId, 'DIAGNOSIS_INPUT', {});
+          return await handleDiagnosisInputState(env, convId, userInput, {});
+        }
+        
+        // その他の入力 → 初期状態のまま案内
+        console.log('[INITIAL] Detected as OTHER, showing welcome message');
         return await handleInitialState(env, convId, user_id || null);
 
       case 'TREATMENT_CHECK':
         // ユーザーが症状を直接入力した場合
         if (userInput && !selection) {
-          const classification = await classifyInput(env, userInput);
+          const treatmentClassification = await classifyInput(env, userInput);
           
-          if (classification.type === 'SYMPTOM') {
+          if (treatmentClassification.type === 'SYMPTOM') {
             // 症状として認識された場合、症状入力状態へ
             await updateConversationState(env, convId, 'SYMPTOM_INPUT', { symptoms: [userInput], hasTreatment: 'yes' });
             return await handleSymptomInputState(env, convId, userInput, { symptoms: [userInput], hasTreatment: 'yes' });
+          } else if (treatmentClassification.type === 'DISEASE') {
+            // 疾病名として認識された場合、診断名入力状態へ
+            await updateConversationState(env, convId, 'DIAGNOSIS_INPUT', { hasTreatment: 'yes' });
+            return await handleDiagnosisInputState(env, convId, userInput, { hasTreatment: 'yes' });
           }
         }
         return await handleTreatmentCheck(env, convId, selection, userInput);
