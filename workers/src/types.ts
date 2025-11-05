@@ -50,6 +50,8 @@ export type ConversationState =
   | 'DISEASE_DETAIL_VIEW'        // 疾病詳細表示
   | 'SYMPTOM_FOLLOWUP'           // 症状追加質問
   | 'RESULT'                     // 判定結果表示
+  | 'CUSTOMER_INFO_INPUT'        // お客様情報入力
+  | 'BOOKING_CONFIRMATION'       // 予約確認
   | 'FINAL_CONFIRMATION'         // 最終ヒアリング
   | 'COMPLETED';                 // 完了
 

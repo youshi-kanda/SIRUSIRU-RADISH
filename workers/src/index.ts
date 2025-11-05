@@ -125,6 +125,15 @@ export default {
         return response;
       }
 
+      // Customer information endpoint
+      if (url.pathname === '/api/customer-info' && request.method === 'POST') {
+        const response = await handleCustomerInfo(request, env);
+        Object.entries(corsHeaders).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
+        return response;
+      }
+
       return new Response(
         JSON.stringify({ error: 'Not Found', code: 'NOT_FOUND' }),
         {
@@ -262,15 +271,98 @@ async function handleChatRequest(request: Request, env: Env): Promise<Response> 
           // 疾病リストに戻る（症状修正オプション付き）
           return await showDiseaseListWithSymptomEdit(env, convId, collectedData);
         } else if (selection === 'proceed') {
-          // 最終確認へ
-          await updateConversationState(env, convId, 'FINAL_CONFIRMATION', {});
-          return await handleFinalConfirmation(env, convId, body);
+          // お客様情報入力へ
+          await updateConversationState(env, convId, 'CUSTOMER_INFO_INPUT', {});
+          return createSuccessResponse({
+            answer: 'それでは、ご予約に必要なお客様情報を入力してください。\n\n入力フォームが表示されますので、必要事項をご記入ください。',
+            conversation_id: convId,
+            state: 'CUSTOMER_INFO_INPUT',
+            requires_customer_info: true,
+            disease_detected: collectedData.selectedDisease || null,
+            confidence_score: 0,
+            sources: [],
+            type: 'form_prompt',
+          });
         }
         // その他のケースは詳細表示を再表示
         return await handleDiseaseDetailView(env, convId, collectedData, collectedData.selectedDisease || '');
 
       case 'SYMPTOM_FOLLOWUP':
         return await handleSymptomFollowup(env, convId, userInput, collectedData);
+
+      case 'CUSTOMER_INFO_INPUT':
+        // お客様情報入力状態（フォームで入力されるので、ここでは待機メッセージを返す）
+        return createSuccessResponse({
+          answer: 'お客様情報の入力をお待ちしています...',
+          conversation_id: convId,
+          state: 'CUSTOMER_INFO_INPUT',
+          requires_customer_info: true,
+          disease_detected: collectedData.selectedDisease || null,
+          confidence_score: 0,
+          sources: [],
+          type: 'waiting',
+        });
+
+      case 'BOOKING_CONFIRMATION':
+        // 予約確認状態（「はい」または「修正」を受け取る）
+        if (selection === 'yes' || userInput?.toLowerCase().includes('はい') || userInput?.toLowerCase().includes('yes')) {
+          await updateConversationState(env, convId, 'COMPLETED', {});
+          return createSuccessResponse({
+            answer: 'ご予約を確定しました。\n\n後ほど担当者よりご連絡させていただきます。\nご利用ありがとうございました。',
+            conversation_id: convId,
+            state: 'COMPLETED',
+            disease_detected: collectedData.selectedDisease || null,
+            confidence_score: 0,
+            sources: [],
+            type: 'completion',
+          });
+        } else if (selection === 'edit' || userInput?.includes('修正')) {
+          // お客様情報修正へ戻る
+          await updateConversationState(env, convId, 'CUSTOMER_INFO_INPUT', {});
+          return createSuccessResponse({
+            answer: 'お客様情報を修正します。入力フォームをご確認ください。',
+            conversation_id: convId,
+            state: 'CUSTOMER_INFO_INPUT',
+            requires_customer_info: true,
+            disease_detected: collectedData.selectedDisease || null,
+            confidence_score: 0,
+            sources: [],
+            type: 'form_prompt',
+          });
+        } else {
+          // 予約確認メッセージを再表示
+          const customerInfo = await getCustomerInfo(env, convId);
+          if (customerInfo) {
+            const confirmationMessage = `${customerInfo.name}様、以下の内容でご予約を承りました。
+
+【お客様情報】
+お名前: ${customerInfo.name}
+生年月日: ${customerInfo.birthdate}
+性別: ${customerInfo.gender === 'male' ? '男性' : customerInfo.gender === 'female' ? '女性' : 'その他'}
+ご住所: ${customerInfo.address}
+電話番号: ${customerInfo.phone}
+メールアドレス: ${customerInfo.email}
+
+この内容で予約を確定してよろしいですか？`;
+
+            return createSuccessResponse({
+              answer: confirmationMessage,
+              conversation_id: convId,
+              state: 'BOOKING_CONFIRMATION',
+              disease_detected: collectedData.selectedDisease || null,
+              confidence_score: 0,
+              sources: [],
+              type: 'confirmation',
+              options: [
+                { value: 'yes', label: 'はい、確定します', display: 'inline' },
+                { value: 'edit', label: '修正する', display: 'inline' }
+              ],
+              requires_input: 'selection',
+            });
+          } else {
+            return createErrorResponse('お客様情報が見つかりません', 'NOT_FOUND');
+          }
+        }
 
       case 'RESULT':
         // 「最終確認へ進む」選択を受け取った場合、FINAL_CONFIRMATIONへ遷移
@@ -1690,3 +1782,156 @@ async function handleConversationList(request: Request, env: Env): Promise<Respo
     );
   }
 }
+
+/**
+ * お客様情報受信ハンドラー
+ */
+async function handleCustomerInfo(request: Request, env: Env): Promise<Response> {
+  try {
+    const body = await request.json() as any;
+    console.log('[Customer Info] Received request:', JSON.stringify(body, null, 2));
+
+    // リクエストボディのバリデーション
+    const { conversation_id, user_id, customer_info } = body;
+
+    if (!conversation_id || !user_id || !customer_info) {
+      return new Response(
+        JSON.stringify({ 
+          error: '必須パラメータが不足しています',
+          required: ['conversation_id', 'user_id', 'customer_info']
+        }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // お客様情報のバリデーション
+    const { name, birthdate, gender, address, phone, email } = customer_info;
+
+    if (!name || !birthdate || !gender || !address || !phone || !email) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'お客様情報が不完全です',
+          required_fields: ['name', 'birthdate', 'gender', 'address', 'phone', 'email']
+        }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // メールアドレス形式のバリデーション
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return new Response(
+        JSON.stringify({ error: 'メールアドレスの形式が正しくありません' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // 電話番号形式のバリデーション（数字とハイフンのみ）
+    const phoneRegex = /^[0-9\-]+$/;
+    if (!phoneRegex.test(phone)) {
+      return new Response(
+        JSON.stringify({ error: '電話番号は数字とハイフンで入力してください' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    // データベースに保存
+    const now = new Date().toISOString();
+
+    // 既存のお客様情報を確認
+    const existing = await env.DB.prepare(
+      'SELECT id FROM customer_info WHERE conversation_id = ?'
+    ).bind(conversation_id).first();
+
+    if (existing) {
+      // 既存データを更新
+      await env.DB.prepare(
+        `UPDATE customer_info 
+         SET name = ?, birthdate = ?, gender = ?, address = ?, phone = ?, email = ?, updated_at = ?
+         WHERE conversation_id = ?`
+      ).bind(name, birthdate, gender, address, phone, email, now, conversation_id).run();
+
+      console.log(`[Customer Info] Updated for conversation ${conversation_id}`);
+    } else {
+      // 新規データを挿入
+      await env.DB.prepare(
+        `INSERT INTO customer_info (conversation_id, user_id, name, birthdate, gender, address, phone, email, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(conversation_id, user_id, name, birthdate, gender, address, phone, email, now, now).run();
+
+      console.log(`[Customer Info] Saved for conversation ${conversation_id}`);
+    }
+
+    // 会話状態を更新（CUSTOMER_INFO_INPUT → BOOKING_CONFIRMATION）
+    await updateConversationState(env, conversation_id, 'BOOKING_CONFIRMATION');
+
+    // 確認メッセージを生成
+    const confirmationMessage = `${name}様、以下の内容でご予約を承りました。
+
+【お客様情報】
+お名前: ${name}
+生年月日: ${birthdate}
+性別: ${gender === 'male' ? '男性' : gender === 'female' ? '女性' : 'その他'}
+ご住所: ${address}
+電話番号: ${phone}
+メールアドレス: ${email}
+
+この内容で予約を確定してよろしいですか？
+確定する場合は「はい」、修正する場合は「修正」とお答えください。`;
+
+    return new Response(
+      JSON.stringify({ 
+        success: true,
+        message: confirmationMessage,
+        conversation_id,
+        state: 'BOOKING_CONFIRMATION'
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+
+  } catch (error) {
+    console.error('[Customer Info] Error:', error);
+    return new Response(
+      JSON.stringify({ 
+        error: 'お客様情報の保存中にエラーが発生しました',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
+}
+
+/**
+ * お客様情報を取得
+ */
+async function getCustomerInfo(env: Env, conversationId: string): Promise<any | null> {
+  try {
+    const result = await env.DB.prepare(
+      'SELECT * FROM customer_info WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1'
+    ).bind(conversationId).first();
+
+    return result || null;
+  } catch (error) {
+    console.error('[Get Customer Info] Error:', error);
+    return null;
+  }
+}
+
