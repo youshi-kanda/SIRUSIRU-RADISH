@@ -87,6 +87,65 @@
     <i class="fa-solid fa-volume-high"></i>
   </button>
 
+  <!-- お客様情報入力フォームモーダル -->
+  <div id="customer-info-modal" class="modal-container" style="display: none;">
+    <div class="modal-content customer-info-modal-content">
+      <button class="modal-close-button" id="customer-info-modal-close">×</button>
+      <h2><i class="fa-solid fa-user-edit"></i> お客様情報の入力</h2>
+      <p class="form-description">ご来院の予約に必要な情報をご入力ください。</p>
+      
+      <form id="customer-info-form">
+        <div class="form-group">
+          <label for="customer-name">お名前 <span class="required">*</span></label>
+          <input type="text" id="customer-name" name="name" required placeholder="例: 山田 太郎">
+          <span class="error-message" id="error-name"></span>
+        </div>
+
+        <div class="form-group">
+          <label for="customer-birthdate">生年月日 <span class="required">*</span></label>
+          <input type="date" id="customer-birthdate" name="birthdate" required>
+          <span class="error-message" id="error-birthdate"></span>
+        </div>
+
+        <div class="form-group">
+          <label for="customer-gender">性別 <span class="required">*</span></label>
+          <select id="customer-gender" name="gender" required>
+            <option value="">選択してください</option>
+            <option value="male">男性</option>
+            <option value="female">女性</option>
+            <option value="other">その他</option>
+          </select>
+          <span class="error-message" id="error-gender"></span>
+        </div>
+
+        <div class="form-group">
+          <label for="customer-address">ご住所 <span class="required">*</span></label>
+          <input type="text" id="customer-address" name="address" required placeholder="例: 東京都渋谷区〇〇1-2-3">
+          <span class="error-message" id="error-address"></span>
+        </div>
+
+        <div class="form-group">
+          <label for="customer-phone">電話番号 <span class="required">*</span></label>
+          <input type="tel" id="customer-phone" name="phone" required placeholder="例: 090-1234-5678">
+          <span class="error-message" id="error-phone"></span>
+        </div>
+
+        <div class="form-group">
+          <label for="customer-email">メールアドレス <span class="required">*</span></label>
+          <input type="email" id="customer-email" name="email" required placeholder="例: example@example.com">
+          <span class="error-message" id="error-email"></span>
+        </div>
+
+        <div class="form-buttons">
+          <button type="button" class="btn-cancel" id="customer-info-cancel">キャンセル</button>
+          <button type="submit" class="btn-submit" id="customer-info-submit">
+            <i class="fa-solid fa-paper-plane"></i> 送信
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
 <div id="upload-modal" class="modal-container" style="display: none;">
   <div class="modal-content">
     <h2>ファイルアップロード</h2>

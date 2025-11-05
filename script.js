@@ -1039,6 +1039,15 @@ async function sendMessage(userInput, files = []) {
     // 選択ボタンがある場合は一緒に表示
     addMessage(botResponse, "bot", data.options);
     
+    // お客様情報入力が必要な場合、モーダルを表示
+    if (data.state === 'CUSTOMER_INFO_INPUT' || data.requires_customer_info === true) {
+      console.log("お客様情報入力状態を検出 - モーダルを表示します");
+      // 少し遅延させてメッセージ表示後にモーダルを開く
+      setTimeout(() => {
+        showCustomerInfoModal();
+      }, 500);
+    }
+    
     // フォームがある場合は表示
     if (data.requires_input === 'form' && data.form_fields) {
       addCustomerForm(data.form_fields);
@@ -7204,5 +7213,231 @@ async function fetchFilesList() {
     return [];
   }
 }
+
+
+/* ============================================
+   お客様情報入力フォーム処理
+   ============================================ */
+
+// お客様情報フォームのモーダル要素
+const customerInfoModal = document.getElementById('customer-info-modal');
+const customerInfoForm = document.getElementById('customer-info-form');
+const customerInfoCloseBtn = document.getElementById('customer-info-modal-close');
+const customerInfoCancelBtn = document.getElementById('customer-info-cancel');
+
+// モーダルを開く関数
+function showCustomerInfoModal() {
+  if (customerInfoModal) {
+    customerInfoModal.style.display = 'flex';
+    // フォームをリセット
+    if (customerInfoForm) {
+      customerInfoForm.reset();
+      clearAllErrors();
+    }
+  }
+}
+
+// モーダルを閉じる関数
+function hideCustomerInfoModal() {
+  if (customerInfoModal) {
+    customerInfoModal.style.display = 'none';
+    if (customerInfoForm) {
+      customerInfoForm.reset();
+      clearAllErrors();
+    }
+  }
+}
+
+// エラーメッセージをクリア
+function clearAllErrors() {
+  const errorElements = document.querySelectorAll('.error-message');
+  errorElements.forEach(el => el.textContent = '');
+  
+  const inputElements = document.querySelectorAll('.form-group input, .form-group select');
+  inputElements.forEach(el => el.classList.remove('error'));
+}
+
+// 個別エラーメッセージを表示
+function showFieldError(fieldName, message) {
+  const errorElement = document.getElementById(`error-${fieldName}`);
+  const inputElement = document.getElementById(`customer-${fieldName}`);
+  
+  if (errorElement) {
+    errorElement.textContent = message;
+  }
+  if (inputElement) {
+    inputElement.classList.add('error');
+  }
+}
+
+// バリデーション関数
+function validateCustomerInfoForm(formData) {
+  clearAllErrors();
+  let isValid = true;
+  
+  // 氏名のバリデーション
+  if (!formData.name || formData.name.trim() === '') {
+    showFieldError('name', 'お名前を入力してください');
+    isValid = false;
+  }
+  
+  // 生年月日のバリデーション
+  if (!formData.birthdate) {
+    showFieldError('birthdate', '生年月日を選択してください');
+    isValid = false;
+  } else {
+    const birthDate = new Date(formData.birthdate);
+    const today = new Date();
+    if (birthDate > today) {
+      showFieldError('birthdate', '未来の日付は選択できません');
+      isValid = false;
+    }
+  }
+  
+  // 性別のバリデーション
+  if (!formData.gender || formData.gender === '') {
+    showFieldError('gender', '性別を選択してください');
+    isValid = false;
+  }
+  
+  // 住所のバリデーション
+  if (!formData.address || formData.address.trim() === '') {
+    showFieldError('address', 'ご住所を入力してください');
+    isValid = false;
+  }
+  
+  // 電話番号のバリデーション
+  if (!formData.phone || formData.phone.trim() === '') {
+    showFieldError('phone', '電話番号を入力してください');
+    isValid = false;
+  } else {
+    // 電話番号形式チェック（数字とハイフンのみ）
+    const phoneRegex = /^[0-9\-]+$/;
+    if (!phoneRegex.test(formData.phone)) {
+      showFieldError('phone', '電話番号は数字とハイフンで入力してください');
+      isValid = false;
+    }
+  }
+  
+  // メールアドレスのバリデーション
+  if (!formData.email || formData.email.trim() === '') {
+    showFieldError('email', 'メールアドレスを入力してください');
+    isValid = false;
+  } else {
+    // メール形式チェック
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      showFieldError('email', '正しいメールアドレスの形式で入力してください');
+      isValid = false;
+    }
+  }
+  
+  return isValid;
+}
+
+// フォーム送信処理
+async function submitCustomerInfo(formData) {
+  try {
+    const submitButton = document.getElementById('customer-info-submit');
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 送信中...';
+    }
+    
+    const userEmail = localStorage.getItem("userEmail") || "anonymous";
+    
+    const requestBody = {
+      conversation_id: conversationId,
+      user_id: userEmail,
+      customer_info: {
+        name: formData.name,
+        birthdate: formData.birthdate,
+        gender: formData.gender,
+        address: formData.address,
+        phone: formData.phone,
+        email: formData.email
+      }
+    };
+    
+    console.log("お客様情報送信:", requestBody);
+    
+    const response = await apiFetch(getConfig('ENDPOINTS.CUSTOMER_INFO'), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody)
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("お客様情報送信エラー:", errorText);
+      throw new Error('お客様情報の送信に失敗しました。もう一度お試しください。');
+    }
+    
+    const result = await response.json();
+    console.log("お客様情報送信成功:", result);
+    
+    // モーダルを閉じる
+    hideCustomerInfoModal();
+    
+    // 確認メッセージを表示
+    if (result.message) {
+      addMessage(result.message, 'bot');
+    } else {
+      addMessage('お客様情報を受け付けました。ご予約内容をご確認ください。', 'bot');
+    }
+    
+    return result;
+    
+  } catch (error) {
+    console.error("お客様情報送信エラー:", error);
+    addMessage(`エラー: ${error.message}`, 'system');
+    throw error;
+  } finally {
+    const submitButton = document.getElementById('customer-info-submit');
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.innerHTML = '<i class="fa-solid fa-paper-plane"></i> 送信';
+    }
+  }
+}
+
+// イベントリスナーの設定
+if (customerInfoForm) {
+  customerInfoForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const formData = {
+      name: document.getElementById('customer-name')?.value || '',
+      birthdate: document.getElementById('customer-birthdate')?.value || '',
+      gender: document.getElementById('customer-gender')?.value || '',
+      address: document.getElementById('customer-address')?.value || '',
+      phone: document.getElementById('customer-phone')?.value || '',
+      email: document.getElementById('customer-email')?.value || ''
+    };
+    
+    if (validateCustomerInfoForm(formData)) {
+      await submitCustomerInfo(formData);
+    }
+  });
+}
+
+// モーダルを閉じるイベント
+if (customerInfoCloseBtn) {
+  customerInfoCloseBtn.addEventListener('click', hideCustomerInfoModal);
+}
+
+if (customerInfoCancelBtn) {
+  customerInfoCancelBtn.addEventListener('click', hideCustomerInfoModal);
+}
+
+// モーダル背景クリックで閉じる
+if (customerInfoModal) {
+  customerInfoModal.addEventListener('click', (e) => {
+    if (e.target === customerInfoModal) {
+      hideCustomerInfoModal();
+    }
+  });
+}
+
 
 

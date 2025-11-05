@@ -149,6 +149,9 @@ window.CONFIG = {
     // チャット関連（Radish AI Engine v2.0）
     CHAT_MESSAGES: `${companyConfig.workers_url}/api/chat`,
     CHAT_FILE_UPLOAD: `${companyConfig.workers_url}/api/chat-files/upload`,
+    
+    // お客様情報関連
+    CUSTOMER_INFO: `${companyConfig.workers_url}/api/customer-info`,
 
     // ドキュメント関連
     DOCUMENT_VIEW: (docId) => `${companyConfig.workers_url}/documents/${docId}`,
